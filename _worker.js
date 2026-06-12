@@ -712,7 +712,16 @@ export default {
         };
         const route = shortRoutes[path];
         if (route) {
-            const target = `/sub/${route.uuid}?domain=sublx.wilhelm.kdns.fr&epd=yes&ev=${route.ev}&et=${route.et}&evm=${route.evm}&dkby=yes&path=${encodeURIComponent(route.path)}`;
+            const extraParams = new URLSearchParams();
+            for (const [k, v] of url.searchParams) {
+                if (!["domain","ev","et","evm","path","epd","dkby"].includes(k)) {
+                    extraParams.set(k, v);
+                }
+            }
+            const extraStr = extraParams.toString();
+            let query = "domain=sublx.wilhelm.kdns.fr&epd=yes&ev=" + route.ev + "&et=" + route.et + "&evm=" + route.evm + "&dkby=yes&path=" + encodeURIComponent(route.path);
+            if (extraStr) query += "&" + extraStr;
+            const target = "/sub/" + route.uuid + "?" + query;
             const forwarded = new URL(target, url.origin);
             return await handleSubscriptionRequest(
                 new Request(forwarded, request),
