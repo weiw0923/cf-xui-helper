@@ -703,6 +703,25 @@ export default {
             });
         }
 
+        // 短路径跳转 — 硬编码，方便记忆
+        const shortRoutes = {
+            '/vl':  { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'yes', et: 'no',  evm: 'no',  path: '/c3d382af-vl' },
+            '/tr':  { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'no',  et: 'yes', evm: 'no',  path: '/c3d382af-tr' },
+            '/vm':  { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'no',  et: 'no',  evm: 'yes', path: '/c3d382af-vm' },
+            '/all': { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'yes', et: 'yes', evm: 'yes', path: '/c3d382af-vl' },
+        };
+        const route = shortRoutes[path];
+        if (route) {
+            const target = `/sub/${route.uuid}?domain=sublx.wilhelm.kdns.fr&epd=yes&ev=${route.ev}&et=${route.et}&evm=${route.evm}&dkby=yes&path=${encodeURIComponent(route.path)}`;
+            const forwarded = new URL(target, url.origin);
+            return await handleSubscriptionRequest(
+                new Request(forwarded, request),
+                route.uuid, 'sublx.wilhelm.kdns.fr',
+                route.ev === 'yes', route.et === 'yes', route.evm === 'yes',
+                true, route.path, null, env
+            );
+        }
+
         // 订阅请求格式: /{UUID}/sub?domain=xxx&epd=yes
         const pathMatch = path.match(/^\/([^\/]+)\/sub$/);
         if (pathMatch) {
