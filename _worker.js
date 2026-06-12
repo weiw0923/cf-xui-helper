@@ -7,6 +7,9 @@ let ev = true;    // 启用VLESS协议
 let et = false;   // 启用Trojan协议
 let vm = false;   // 启用VMess协议
 let scu = 'https://url.v1.mk/sub';  // 订阅转换地址
+let enableECH = false;
+let customDNS = 'https://dns.joeyblog.eu.org/joeyblog';
+let customECHDomain = 'cloudflare-ech.com';
 
 // 默认KV节点列表（KV 读取失败时的回退）
 const defaultNodes = [
@@ -50,7 +53,7 @@ async function getCustomNodes(env) {
 }
 
 // 生成VLESS链接
-function generateLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/') {
+function generateLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/', echConfig = null) {
     const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
     const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
     const defaultHttpsPorts = [443];
@@ -94,6 +97,10 @@ function generateLinksFromSource(list, user, workerDomain, disableNonTLS = false
                     host: workerDomain,
                     path: wsPath
                 });
+                if (echConfig) {
+                    wsParams.set('alpn', 'h3,h2,http/1.1');
+                    wsParams.set('ech', echConfig);
+                }
                 links.push(`${proto}://${user}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
             } else {
                 const wsNodeName = `${nodeName}-${port}-WS`;
@@ -112,7 +119,7 @@ function generateLinksFromSource(list, user, workerDomain, disableNonTLS = false
 }
 
 // 生成Trojan链接
-async function generateTrojanLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/') {
+async function generateTrojanLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/', echConfig = null) {
     const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
     const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
     const defaultHttpsPorts = [443];
@@ -157,6 +164,10 @@ async function generateTrojanLinksFromSource(list, user, workerDomain, disableNo
                     host: workerDomain,
                     path: wsPath
                 });
+                if (echConfig) {
+                    wsParams.set('alpn', 'h3,h2,http/1.1');
+                    wsParams.set('ech', echConfig);
+                }
                 links.push(`trojan://${password}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
             } else {
                 const wsNodeName = `${nodeName}-${port}-Trojan-WS`;
@@ -240,7 +251,7 @@ function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = 
 }
 
 // 生成订阅内容
-async function handleSubscriptionRequest(request, user, customDomain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, env) {
+async function handleSubscriptionRequest(request, user, customDomain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, echConfig, env) {
     const url = new URL(request.url);
     const finalLinks = [];
     const workerDomain = url.hostname;
@@ -253,10 +264,10 @@ async function handleSubscriptionRequest(request, user, customDomain, evEnabled,
         const useVL = hasProtocol ? evEnabled : true;
 
         if (useVL) {
-            finalLinks.push(...generateLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
+            finalLinks.push(...generateLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath, echConfig));
         }
         if (etEnabled) {
-            finalLinks.push(...await generateTrojanLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
+            finalLinks.push(...await generateTrojanLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath, echConfig));
         }
         if (vmEnabled) {
             finalLinks.push(...generateVMessLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
@@ -523,11 +534,14 @@ function generateHomePage(scuValue) {
                 <label>客户端选择</label>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 8px;">
                     <button type="button" class="client-btn" onclick="generateClientLink('clash','CLASH')">CLASH</button>
+                    <button type="button" class="client-btn" onclick="generateClientLink('clash','STASH')">STASH</button>
                     <button type="button" class="client-btn" onclick="generateClientLink('surge','SURGE')">SURGE</button>
                     <button type="button" class="client-btn" onclick="generateClientLink('sing-box','SING-BOX')">SING-BOX</button>
                     <button type="button" class="client-btn" onclick="generateClientLink('loon','LOON')">LOON</button>
                     <button type="button" class="client-btn" onclick="generateClientLink('quanx','QUANTUMULT X')" style="font-size: 13px;">QUANTUMULT X</button>
+                    <button type="button" class="client-btn" onclick="generateClientLink('v2ray','V2RAY')">V2RAY</button>
                     <button type="button" class="client-btn" onclick="generateClientLink('v2ray','V2RAYNG')">V2RAYNG</button>
+                    <button type="button" class="client-btn" onclick="generateClientLink('v2ray','NEKORAY')">NEKORAY</button>
                     <button type="button" class="client-btn" onclick="generateClientLink('v2ray','Shadowrocket')" style="font-size: 13px;">Shadowrocket</button>
                 </div>
                 <div class="result-url" id="clientSubscriptionUrl"></div>
@@ -540,19 +554,43 @@ function generateHomePage(scuValue) {
                 </div>
                 <div class="switch" id="switchTLS"></div>
             </div>
+
+            <div class="list-item" onclick="toggleSwitch('switchECH')" style="margin-top: 8px;">
+                <div>
+                    <div class="list-item-label">ECH (Encrypted Client Hello)</div>
+                    <div class="list-item-description" style="font-size: 13px; color: #86868b; margin-top: 4px;">启用后节点链接将携带 ECH 参数，需客户端支持；开启时自动仅TLS</div>
+                </div>
+                <div class="switch" id="switchECH"></div>
+            </div>
+            <div class="form-group" id="echOptionsGroup" style="margin-top: 12px; display: none;">
+                <label>ECH 自定义 DNS（可选）</label>
+                <input type="text" id="customDNS" placeholder="例如: https://dns.joeyblog.eu.org/joeyblog" style="font-size: 14px;">
+                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">用于 ECH 配置查询的 DoH 地址</small>
+                <label style="margin-top: 12px; display: block;">ECH 域名（可选）</label>
+                <input type="text" id="customECHDomain" placeholder="例如: cloudflare-ech.com" style="font-size: 14px;">
+            </div>
         </div>
         <div class="footer">
             <p>订阅生成工具</p>
         </div>
     </div>
     <script>
-        let switches = { switchNodes: true, switchVL: true, switchTJ: false, switchVM: false, switchTLS: false };
+        let switches = { switchNodes: true, switchVL: true, switchTJ: false, switchVM: false, switchTLS: false, switchECH: false };
         const SUB_CONVERTER_URL = "${ scu }";
 
         function toggleSwitch(id) {
             const el = document.getElementById(id);
             switches[id] = !switches[id];
             el.classList.toggle('active');
+            if (id === 'switchECH') {
+                const echOpt = document.getElementById('echOptionsGroup');
+                if (echOpt) echOpt.style.display = switches.switchECH ? 'block' : 'none';
+                if (switches.switchECH && !switches.switchTLS) {
+                    switches.switchTLS = true;
+                    const tlsEl = document.getElementById('switchTLS');
+                    if (tlsEl) tlsEl.classList.add('active');
+                }
+            }
         }
 
         function tryOpenApp(schemeUrl, fallback, timeout) {
@@ -589,6 +627,13 @@ function generateHomePage(scuValue) {
             if (switches.switchTJ) subUrl += '&et=yes';
             if (switches.switchVM) subUrl += '&evm=yes';
             if (switches.switchTLS) subUrl += '&dkby=yes';
+            if (switches.switchECH) {
+                subUrl += '&ech=yes';
+                const dnsVal = document.getElementById('customDNS') && document.getElementById('customDNS').value.trim();
+                if (dnsVal) subUrl += '&customDNS=' + encodeURIComponent(dnsVal);
+                const domainVal = document.getElementById('customECHDomain') && document.getElementById('customECHDomain').value.trim();
+                if (domainVal) subUrl += '&customECHDomain=' + encodeURIComponent(domainVal);
+            }
             if (customPath && customPath !== '/') subUrl += '&path=' + encodeURIComponent(customPath);
 
             let finalUrl = subUrl;
@@ -596,9 +641,15 @@ function generateHomePage(scuValue) {
 
             if (clientType === 'v2ray') {
                 urlEl.textContent = subUrl; urlEl.style.display = 'block';
-                if (clientName === 'V2RAYNG') {
+                if (clientName === 'V2RAY') {
+                    navigator.clipboard.writeText(subUrl).then(() => alert('V2RAY 订阅链接已复制'));
+                } else if (clientName === 'V2RAYNG') {
                     tryOpenApp('v2rayng://install?url=' + encodeURIComponent(subUrl), () => {
                         navigator.clipboard.writeText(subUrl).then(() => alert('V2RAYNG 订阅链接已复制'));
+                    });
+                } else if (clientName === 'NEKORAY') {
+                    tryOpenApp('nekoray://install-config?url=' + encodeURIComponent(subUrl), () => {
+                        navigator.clipboard.writeText(subUrl).then(() => alert('NEKORAY 订阅链接已复制'));
                     });
                 } else if (clientName === 'Shadowrocket') {
                     tryOpenApp('shadowrocket://add/' + encodeURIComponent(subUrl), () => {
@@ -613,7 +664,13 @@ function generateHomePage(scuValue) {
             urlEl.textContent = finalUrl; urlEl.style.display = 'block';
 
             let schemeUrl = '';
-            if (clientType === 'clash') schemeUrl = 'clash://install-config?url=' + encodeURIComponent(finalUrl);
+            if (clientType === 'clash') {
+                if (clientName === 'STASH') {
+                    schemeUrl = 'stash://install?url=' + encodeURIComponent(finalUrl);
+                } else {
+                    schemeUrl = 'clash://install-config?url=' + encodeURIComponent(finalUrl);
+                }
+            }
             else if (clientType === 'surge') schemeUrl = 'surge:///install-config?url=' + encodeURIComponent(finalUrl);
             else if (clientType === 'sing-box') schemeUrl = 'sing-box://install-config?url=' + encodeURIComponent(finalUrl);
             else if (clientType === 'loon') schemeUrl = 'loon://install?url=' + encodeURIComponent(finalUrl);
@@ -660,9 +717,14 @@ export default {
             const etEnabled = url.searchParams.get('et') === 'yes';
             const vmEnabled = url.searchParams.get('evm') === 'yes';
             const disableNonTLS = url.searchParams.get('dkby') === 'yes';
+            const echParam = url.searchParams.get('ech');
+            const echEnabled = echParam === 'yes' || (echParam === null && enableECH);
+            const customDNSParam = url.searchParams.get('customDNS') || customDNS;
+            const customECHDomainParam = url.searchParams.get('customECHDomain') || customECHDomain;
+            const echConfig = echEnabled ? `${customECHDomainParam}+${customDNSParam}` : null;
             const customPath = url.searchParams.get('path') || '/';
 
-            return await handleSubscriptionRequest(request, uuid, domain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, env);
+            return await handleSubscriptionRequest(request, uuid, domain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, echConfig, env);
         }
 
         return new Response('Not Found', { status: 404 });
