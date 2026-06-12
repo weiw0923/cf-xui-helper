@@ -178,7 +178,24 @@ def find_or_create_worker(headers: Dict[str, str], worker_name: str) -> str:
     upload_worker(headers, worker_name)
     worker_domain = f"{worker_name}.{get_worker_subdomain(headers)}"
     print(f"  Worker 部署完成: https://{worker_domain}")
+
+    # 启用 workers.dev 子域名路由
+    _enable_worker_route(headers, worker_name)
+
     return worker_domain
+
+
+def _enable_worker_route(headers: Dict[str, str], worker_name: str) -> None:
+    """启用 Worker 的 workers.dev 子域名路由"""
+    account_id = get_account_id(headers)
+    result = call_json_api(
+        "POST",
+        f"{CF_API_BASE}/accounts/{account_id}/workers/scripts/{worker_name}/subdomain",
+        headers=headers,
+        data={"enabled": True},
+    )
+    if result.get("success", False):
+        print(f"  已启用 workers.dev 子域名路由")
 
 
 def get_account_id(headers: Dict[str, str]) -> str:
@@ -349,15 +366,30 @@ def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id
 
 
 def set_kv_value(headers: Dict[str, str], kv_namespace_id: str, key: str, value: str) -> None:
-    """写入 KV 数据"""
+    """写入 KV 数据（纯文本，非 JSON）"""
     account_id = get_account_id(headers)
     encoded_key = parse.quote(key, safe='')
-    result = call_json_api(
-        "PUT",
-        f"{CF_API_BASE}/accounts/{account_id}/storage/kv/namespaces/{kv_namespace_id}/values/{encoded_key}",
-        headers=headers,
-        data=value,
-    )
+
+    # 使用 urllib 直接上传纯文本（不用 call_json_api，因为后者会 JSON 编码 body）
+    url = f"{CF_API_BASE}/accounts/{account_id}/storage/kv/namespaces/{kv_namespace_id}/values/{encoded_key}"
+    data = value.encode("utf-8")
+    req = request.Request(url, data=data, method="PUT")
+    req.add_header("X-Auth-Email", headers.get("X-Auth-Email", ""))
+    req.add_header("X-Auth-Key", headers.get("X-Auth-Key", ""))
+    req.add_header("Content-Type", "text/plain; charset=utf-8")
+
+    try:
+        with request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            if not result.get("success", False):
+                errors = result.get("errors") or [{"message": "写入 KV 失败"}]
+                print(json.dumps(errors, ensure_ascii=False))
+                sys.exit(1)
+    except error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        print(body)
+        sys.exit(1)
+
     print(f"  KV 已写入 key='{key}'")
 
 
