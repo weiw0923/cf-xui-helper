@@ -35,163 +35,19 @@ PROTOCOL_LABEL = {"vless": "VLESS", "trojan": "TROJAN", "vmess": "VMESS"}
 PROTOCOL_QUERY_FLAG = {"vless": "ev", "trojan": "et", "vmess": "evm"}
 MANAGED_RULE_PREFIX = "3x-ui-auto "
 
-# 嵌入 _worker.js 源码（部署 Worker 时上传）
-WORKER_JS = r'''// Cloudflare Worker - 简化版优选工具
-// 节点来源：KV 存储 + 原生地址
-
-let epd = true;
-let ev = true;
-let et = false;
-let vm = false;
-let scu = 'https://url.v1.mk/sub';
-
-const defaultNodes = [
-    { name: "cloudflare.182682.xyz", ip: "cloudflare.182682.xyz" },
-    { ip: "freeyx.cloudflare88.eu.org" },
-    { ip: "bestcf.top" },
-    { ip: "cdn.2020111.xyz" },
-    { ip: "cf.0sm.com" },
-    { ip: "cf.090227.xyz" },
-    { ip: "cf.zhetengsha.eu.org" },
-    { ip: "cfip.1323123.xyz" },
-    { ip: "cloudflare-ip.mofashi.ltd" },
-    { ip: "cf.877771.xyz" },
-    { ip: "xn--b6gac.eu.org" }
-];
-
-async function getCustomNodes(env) {
-    try {
-        if (!env?.PD) return defaultNodes;
-        const raw = await env.PD.get('nodes');
-        if (!raw) return defaultNodes;
-        try {
-            const json = JSON.parse(raw);
-            if (Array.isArray(json)) {
-                return json.map(d => typeof d === 'string' ? { ip: d } : d);
-            }
-        } catch (e) {}
-        const lines = raw.split('\\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
-        return lines.map(addr => ({ ip: addr }));
-    } catch (e) {
-        return defaultNodes;
-    }
-}
-
-function generateVLESS(list, user, domain, noTLS, path) {
-    const HTTP = [80,8080,8880,2052,2082,2086,2095], HTTPS = [443,2053,2083,2087,2096,8443];
-    const links = [], p = path || '/';
-    list.forEach(item => {
-        const name = item.name || item.ip, ip = item.ip;
-        const ports = item.port ? (HTTPS.includes(item.port) ? [{port:item.port,tls:1}] : HTTP.includes(item.port) ? [{port:item.port,tls:0}] : [{port:item.port,tls:1}])
-            : [...(noTLS?[]:[{port:80,tls:0}]), {port:443,tls:1}];
-        ports.forEach(({port,tls}) => {
-            const params = new URLSearchParams(tls ? {encryption:'none',security:'tls',sni:domain,fp:'chrome',type:'ws',host:domain,path:p}
-                : {encryption:'none',security:'none',type:'ws',host:domain,path:p});
-            links.push(`vless://${user}@${ip}:${port}?${params}#${encodeURIComponent(name+'-'+port+'-WS'+(tls?'-TLS':''))}`);
-        });
-    });
-    return links;
-}
-
-async function generateTrojan(list, user, domain, noTLS, path) {
-    const HTTP = [80,8080,8880,2052,2082,2086,2095], HTTPS = [443,2053,2083,2087,2096,8443];
-    const links = [], p = path || '/';
-    list.forEach(item => {
-        const name = item.name || item.ip, ip = item.ip;
-        const ports = item.port ? (HTTPS.includes(item.port) ? [{port:item.port,tls:1}] : HTTP.includes(item.port) ? (noTLS?[]:[{port:item.port,tls:0}]) : [{port:item.port,tls:1}])
-            : [...(noTLS?[]:[{port:80,tls:0}]), {port:443,tls:1}];
-        ports.forEach(({port,tls}) => {
-            const params = new URLSearchParams(tls ? {security:'tls',sni:domain,fp:'chrome',type:'ws',host:domain,path:p}
-                : {security:'none',type:'ws',host:domain,path:p});
-            links.push(`trojan://${user}@${ip}:${port}?${params}#${encodeURIComponent(name+'-'+port+'-Trojan-WS'+(tls?'-TLS':''))}`);
-        });
-    });
-    return links;
-}
-
-function generateVMess(list, user, domain, noTLS, path) {
-    const HTTP = [80,8080,8880,2052,2082,2086,2095], HTTPS = [443,2053,2083,2087,2096,8443];
-    const links = [], p = path || '/';
-    list.forEach(item => {
-        const name = item.name || item.ip, ip = item.ip;
-        const ports = item.port ? (HTTPS.includes(item.port) ? [{port:item.port,tls:1}] : HTTP.includes(item.port) ? (noTLS?[]:[{port:item.port,tls:0}]) : [{port:item.port,tls:1}])
-            : [...(noTLS?[]:[{port:80,tls:0}]), {port:443,tls:1}];
-        ports.forEach(({port,tls}) => {
-            const c = {v:"2",ps:name+'-'+port+'-VMess-WS'+(tls?'-TLS':''),add:ip,port:String(port),id:user,aid:"0",scy:"auto",net:"ws",type:"none",host:domain,path:p,tls:tls?"tls":"none"};
-            if (tls) { c.sni=domain; c.fp="chrome"; }
-            links.push('vmess://'+btoa(encodeURIComponent(JSON.stringify(c)).replace(/%([0-9A-F]{2})/g,(_,p1)=>String.fromCharCode('0x'+p1))));
-        });
-    });
-    return links;
-}
-
-async function handleSub(req, user, domain, ev, et, vm, noTLS, path, env) {
-    const host = new URL(req.url).hostname, nd = domain||host, tgt = new URL(req.url).searchParams.get('target')||'base64', wp = path||'/';
-    const links = [];
-    const add = async list => {
-        if (ev || !(et||vm)) links.push(...generateVLESS(list,user,nd,noTLS,wp));
-        if (et) links.push(...await generateTrojan(list,user,nd,noTLS,wp));
-        if (vm) links.push(...generateVMess(list,user,nd,noTLS,wp));
-    };
-    await add([{ip:host,name:'原生地址'}]);
-    if (epd) await add(await getCustomNodes(env));
-    if (!links.length) links.push('vless://00000000-0000-0000-0000-000000000000@127.0.0.1:80?encryption=none&security=none&type=ws&host=error.com&path=/#'+encodeURIComponent('所有节点获取失败'));
-    const t = tgt.toLowerCase();
-    let body, ct = 'text/plain; charset=utf-8';
-    if (t==='clash'||t==='clashr') { body = genClash(links); ct = 'text/yaml; charset=utf-8'; }
-    else if (t.startsWith('surge')) body = genSurge(links);
-    else body = btoa(links.join('\\n'));
-    return new Response(body, {headers:{'Content-Type':ct,'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0'}});
-}
-
-function genClash(links) {
-    let y = 'port: 7890\\nsocks-port: 7891\\nallow-lan: false\\nmode: rule\\nlog-level: info\\n\\nproxies:\\n';
-    const names = [];
-    links.forEach((l,i) => {
-        const n = decodeURIComponent(l.split('#')[1]||'节点'+(i+1)); names.push(n);
-        const s = l.match(/@([^:]+):(\\d+)/), u = l.match(/vless:\\/\\/([^@]+)@/);
-        y += '  - name: '+n+'\\n    type: vless\\n    server: '+(s[1]||'')+'\\n    port: '+(s[2]||'443')+'\\n    uuid: '+(u[1]||'')+'\\n    tls: '+l.includes('security=tls')+'\\n    network: ws\\n    ws-opts:\\n      path: '+(l.match(/path=([^&#]+)/)?.[1]||'/')+'\\n      headers:\\n        Host: '+(l.match(/host=([^&#]+)/)?.[1]||'')+'\\n';
-    });
-    y += '\\nproxy-groups:\\n  - name: PROXY\\n    type: select\\n    proxies: ['+names.map(n=>"'"+n+"'").join(', ')+']\\n\\nrules:\\n  - DOMAIN-SUFFIX,local,DIRECT\\n  - IP-CIDR,127.0.0.0/8,DIRECT\\n  - GEOIP,CN,DIRECT\\n  - MATCH,PROXY\\n';
-    return y;
-}
-
-function genSurge(links) {
-    let c = '[Proxy]\\n';
-    links.forEach(l => {
-        const n = decodeURIComponent(l.split('#')[1]||'节点'), s = l.match(/@([^:]+):(\\d+)/), u = l.match(/vless:\\/\\/([^@]+)@/);
-        c += n+' = vless, '+(s[1]||'')+', '+(s[2]||'443')+', username='+(u[1]||'')+', tls='+l.includes('security=tls')+', ws=true, ws-path='+(l.match(/path=([^&#]+)/)?.[1]||'/')+', ws-headers=Host:'+(l.match(/host=([^&#]+)/)?.[1]||'')+'\\n';
-    });
-    c += '\\n[Proxy Group]\\nPROXY = select, '+links.map((_,i)=>decodeURIComponent(links[i].split('#')[1]||'节点'+(i+1))).join(', ')+'\\n';
-    return c;
-}
-
-function home(scu) {
-    return '<!DOCTYPE html><html lang=zh-CN><head><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1.0"><title>订阅生成工具</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(180deg,#f5f5f7,#fff,#fafafa);color:#1d1d1f;min-height:100vh}.container{max-width:600px;margin:0 auto;padding:20px}.header{text-align:center;padding:48px 20px 32px}.header h1{font-size:40px;font-weight:700;color:#1d1d1f;margin-bottom:8px}.header p{font-size:17px;color:#86868b}.card{background:rgba(255,255,255,.75);backdrop-filter:blur(30px);border-radius:24px;padding:28px;margin-bottom:20px;box-shadow:0 4px 24px rgba(0,0,0,.06)}.form-group{margin-bottom:24px}.form-group label{display:block;font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px}.form-group input{width:100%;padding:14px 16px;font-size:17px;background:rgba(142,142,147,.12);border:2px solid transparent;border-radius:12px;outline:none}.form-group input:focus{border-color:#007AFF}.list-item{display:flex;align-items:center;justify-content:space-between;padding:16px 0;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.08)}.list-item-label{font-size:17px;color:#1d1d1f}.switch{width:51px;height:31px;background:rgba(142,142,147,.3);border-radius:16px;cursor:pointer;transition:background .3s;flex-shrink:0}.switch.active{background:#34C759}.switch::after{content:"";position:absolute;width:27px;height:27px;background:#fff;border-radius:50%;transition:transform .3s;box-shadow:0 2px 6px rgba(0,0,0,.15)}.switch{position:relative}.switch.active::after{transform:translateX(20px)}.btn{width:100%;padding:16px;font-size:17px;font-weight:600;color:#fff;background:#007AFF;border:none;border-radius:14px;cursor:pointer;margin-top:8px}.client-btn{padding:12px 16px;font-size:14px;color:#007AFF;background:rgba(0,122,255,.1);border:1px solid rgba(0,122,255,.2);border-radius:12px;cursor:pointer;white-space:nowrap}.result-url{margin-top:12px;padding:12px;background:rgba(0,122,255,.1);border-radius:10px;font-size:13px;color:#007aff;word-break:break-all;display:none}@media(prefers-color-scheme:dark){body{background:linear-gradient(180deg,#000,#1c1c1e,#2c2c2e);color:#f5f5f7}.card{background:rgba(28,28,30,.75)}.form-group input{background:rgba(142,142,147,.2);color:#f5f5f7}.list-item{border-bottom-color:rgba(255,255,255,.1)}.list-item-label{color:#f5f5f7}}</style></head><body><div class=container><div class=header><h1>订阅生成工具</h1><p>一键生成订阅链接</p></div><div class=card><div class=form-group><label>域名</label><input type=text id=domain placeholder="请输入您的域名"></div><div class=form-group><label>UUID/Password</label><input type=text id=uuid placeholder="请输入UUID或Password"></div><div class=form-group><label>WebSocket路径</label><input type=text id=customPath placeholder="默认 /" value=/></div><div class=list-item onclick=toggleSwitch("switchNodes")><div><div class=list-item-label>自定义KV节点</div></div><div class="switch active" id=switchNodes></div></div><div class=form-group style=margin-top:24px><label>协议选择</label><div class=list-item onclick=toggleSwitch("switchVL")><div><div class=list-item-label>VLESS</div></div><div class="switch active" id=switchVL></div></div><div class=list-item onclick=toggleSwitch("switchTJ")><div><div class=list-item-label>Trojan</div></div><div class=switch id=switchTJ></div></div><div class=list-item onclick=toggleSwitch("switchVM")><div><div class=list-item-label>VMess</div></div><div class=switch id=switchVM></div></div></div><div class=form-group style=margin-top:24px><label>客户端选择</label><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:8px"><button class=client-btn onclick=gen("clash","CLASH")>CLASH</button><button class=client-btn onclick=gen("surge","SURGE")>SURGE</button><button class=client-btn onclick=gen("sing-box","SING-BOX")>SING-BOX</button><button class=client-btn onclick=gen("loon","LOON")>LOON</button><button class=client-btn onclick=gen("quanx","QUANTUMULT X")>QUANTUMULT X</button><button class=client-btn onclick=gen("v2ray","V2RAYNG")>V2RAYNG</button><button class=client-btn onclick=gen("v2ray","Shadowrocket")>Shadowrocket</button></div><div class=result-url id=url></div></div><div class=list-item onclick=toggleSwitch("switchTLS")><div><div class=list-item-label>仅TLS节点</div></div><div class=switch id=switchTLS></div></div></div></div><script>let s={switchNodes:1,switchVL:1,switchTJ:0,switchVM:0,switchTLS:0};const SCU="'+scu+'";function toggleSwitch(id){const e=document.getElementById(id);s[id]=!s[id];e.classList.toggle("active")}function tryOpen(u,fb,t){t=t||2500;let op=0,dn=0,st=Date.now();const b=()=>{Date.now()-st<3e3&&!dn&&(op=1)},h=()=>{Date.now()-st<3e3&&!dn&&(op=1)};window.addEventListener("blur",b);document.addEventListener("visibilitychange",h);const f=document.createElement("iframe");f.style.display="none";f.src=u;document.body.appendChild(f);setTimeout(()=>{f.parentNode&&f.parentNode.removeChild(f);window.removeEventListener("blur",b);document.removeEventListener("visibilitychange",h);if(!dn){dn=1;if(!op&&fb)fb()}},t)}function gen(ct,cn){const dm=document.getElementById("domain").value.trim(),uu=document.getElementById("uuid").value.trim(),cp=document.getElementById("customPath").value.trim()||"/";if(!dm||!uu){alert("请先填写域名和UUID");return}if(!s.switchVL&&!s.switchTJ&&!s.switchVM){alert("请至少选择一个协议");return}let su=new URL(window.location.href).origin+"/"+uu+"/sub?domain="+encodeURIComponent(dm)+"&epd="+(s.switchNodes?"yes":"no");if(s.switchVL)su+="&ev=yes";if(s.switchTJ)su+="&et=yes";if(s.switchVM)su+="&evm=yes";if(s.switchTLS)su+="&dkby=yes";if(cp&&cp!=="/")su+="&path="+encodeURIComponent(cp);const el=document.getElementById("url");if(ct==="v2ray"){el.textContent=su;el.style.display="block";if(cn==="V2RAYNG")tryOpen("v2rayng://install?url="+encodeURIComponent(su),()=>{navigator.clipboard.writeText(su).then(()=>alert("V2RAYNG 订阅链接已复制"))});else if(cn==="Shadowrocket")tryOpen("shadowrocket://add/"+encodeURIComponent(su),()=>{navigator.clipboard.writeText(su).then(()=>alert("Shadowrocket 订阅链接已复制"))});return}const eu=encodeURIComponent(su),fu=SCU+"?target="+ct+"&url="+eu+"&insert=false&emoji=true&list=false&xudp=false&udp=false&tfo=false&expand=true&scv=false&fdn=false&new_name=true";el.textContent=fu;el.style.display="block";let su2="";if(ct==="clash")su2="clash://install-config?url="+encodeURIComponent(fu);else if(ct==="surge")su2="surge:///install-config?url="+encodeURIComponent(fu);else if(ct==="sing-box")su2="sing-box://install-config?url="+encodeURIComponent(fu);else if(ct==="loon")su2="loon://install?url="+encodeURIComponent(fu);else if(ct==="quanx")su2="quantumult-x://install-config?url="+encodeURIComponent(fu);if(su2)tryOpen(su2,()=>{navigator.clipboard.writeText(fu).then(()=>alert(cn+" 订阅链接已复制"))});else navigator.clipboard.writeText(fu).then(()=>alert(cn+" 订阅链接已复制"))}</script></body></html>';
-}
-
-export default {
-    async fetch(request, env, ctx) {
-        const url = new URL(request.url), path = url.pathname;
-        if (path === '/' || path === '') {
-            return new Response(home(env?.scu || 'https://url.v1.mk/sub'), {headers:{'Content-Type':'text/html; charset=utf-8'}});
-        }
-        const m = path.match(/^\/([^\/]+)\/sub$/);
-        if (m) {
-            const u = m[1], d = url.searchParams.get('domain');
-            if (!d) return new Response('缺少域名参数', {status:400});
-            epd = url.searchParams.get('epd') !== 'no';
-            const ev = url.searchParams.get('ev') === 'yes' || (url.searchParams.get('ev') === null && true);
-            const et = url.searchParams.get('et') === 'yes';
-            const vm = url.searchParams.get('evm') === 'yes';
-            const nt = url.searchParams.get('dkby') === 'yes';
-            const cp = url.searchParams.get('path') || '/';
-            return await handleSub(request, u, d, ev, et, vm, nt, cp, env);
-        }
-        return new Response('Not Found', {status:404});
-    }
-};
-'''
+# Worker JS 源码 — 部署时从同目录 _worker.js 读取
+def get_worker_js() -> str:
+    """获取 _worker.js 内容，优先本地文件，其次从 GitHub 下载"""
+    local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_worker.js")
+    if os.path.exists(local_path):
+        with open(local_path, "r", encoding="utf-8") as f:
+            return f.read()
+    # 本地没有则从 GitHub 下载
+    try:
+        with request.urlopen("https://raw.githubusercontent.com/weiw0923/cf-xui-helper/main/_worker.js", timeout=15) as resp:
+            return resp.read().decode("utf-8")
+    except Exception:
+        exit_error("无法获取 _worker.js，请确保该文件与 deploy.py 在同一目录")
 
 
 # ============================================================
@@ -376,7 +232,7 @@ def upload_worker(headers: Dict[str, str], worker_name: str) -> None:
     body_parts.append(f"--{boundary}\r\n")
     body_parts.append('Content-Disposition: form-data; name="_worker.js"; filename="_worker.js"\r\n')
     body_parts.append("Content-Type: application/javascript+module\r\n\r\n")
-    body_parts.append(f"{WORKER_JS}\r\n")
+    body_parts.append(f"{get_worker_js()}\r\n")
 
     body_parts.append(f"--{boundary}--\r\n")
 
@@ -467,7 +323,7 @@ def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id
     body_parts.append(f"--{boundary}\r\n")
     body_parts.append('Content-Disposition: form-data; name="_worker.js"; filename="_worker.js"\r\n')
     body_parts.append("Content-Type: application/javascript+module\r\n\r\n")
-    body_parts.append(f"{WORKER_JS}\r\n")
+    body_parts.append(f"{get_worker_js()}\r\n")
 
     body_parts.append(f"--{boundary}--\r\n")
 
