@@ -36,18 +36,27 @@ PROTOCOL_QUERY_FLAG = {"vless": "ev", "trojan": "et", "vmess": "evm"}
 MANAGED_RULE_PREFIX = "3x-ui-auto "
 
 # Worker JS 源码 — 部署时从同目录 _worker.js 读取
-def get_worker_js() -> str:
-    """获取 _worker.js 内容，优先本地文件，其次从 GitHub 下载"""
+def get_worker_js(user_uuid: str = "", domain: str = "") -> str:
+    """获取 _worker.js 内容，优先本地文件，其次从 GitHub 下载
+       并注入 UUID 和域名到代码常量中"""
     local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_worker.js")
     if os.path.exists(local_path):
         with open(local_path, "r", encoding="utf-8") as f:
-            return f.read()
+            js = f.read()
     # 本地没有则从 GitHub 下载
-    try:
-        with request.urlopen("https://raw.githubusercontent.com/weiw0923/cf-xui-helper/main/_worker.js", timeout=15) as resp:
-            return resp.read().decode("utf-8")
-    except Exception:
-        exit_error("无法获取 _worker.js，请确保该文件与 deploy.py 在同一目录")
+    else:
+        try:
+            with request.urlopen("https://raw.githubusercontent.com/weiw0923/cf-xui-helper/main/_worker.js", timeout=15) as resp:
+                js = resp.read().decode("utf-8")
+        except Exception:
+            exit_error("无法获取 _worker.js，请确保该文件与 deploy.py 在同一目录")
+
+    # 注入 UUID 和域名到 _worker.js 常量中
+    if user_uuid:
+        js = js.replace('const SUB_UUID = "";', f'const SUB_UUID = "{user_uuid}";')
+    if domain:
+        js = js.replace('const SUB_DOMAIN = "";', f'const SUB_DOMAIN = "{domain}";')
+    return js
 
 
 # ============================================================
@@ -160,7 +169,7 @@ def fetch_all_zones(headers: Dict[str, str]) -> List[Dict[str, Any]]:
 # ============================================================
 # Worker 部署函数
 # ============================================================
-def find_or_create_worker(headers: Dict[str, str], worker_name: str) -> str:
+def find_or_create_worker(headers: Dict[str, str], worker_name: str, user_uuid: str = "", domain: str = "") -> str:
     """查找或创建 Worker，返回 Worker 域名"""
     # 检查是否已存在
     result = call_json_api(
@@ -175,7 +184,7 @@ def find_or_create_worker(headers: Dict[str, str], worker_name: str) -> str:
         print(f"  正在创建 Worker '{worker_name}'...")
 
     # 上传 Worker 代码
-    upload_worker(headers, worker_name)
+    upload_worker(headers, worker_name, user_uuid, domain)
     worker_domain = f"{worker_name}.{get_worker_subdomain(headers)}"
     print(f"  Worker 部署完成: https://{worker_domain}")
 
@@ -222,7 +231,7 @@ def get_worker_subdomain(headers: Dict[str, str]) -> str:
     return "workers.dev"
 
 
-def upload_worker(headers: Dict[str, str], worker_name: str) -> None:
+def upload_worker(headers: Dict[str, str], worker_name: str, user_uuid: str = "", domain: str = "") -> None:
     """上传 Worker 脚本"""
     account_id = get_account_id(headers)
     url = f"{CF_API_BASE}/accounts/{account_id}/workers/scripts/{worker_name}"
@@ -239,7 +248,7 @@ def upload_worker(headers: Dict[str, str], worker_name: str) -> None:
         "bindings": [],
     })
 
-    # Part 2: JS 代码
+    # Part 2: JS 代码（注入 UUID 和域名）
     body_parts = []
     body_parts.append(f"--{boundary}\r\n")
     body_parts.append('Content-Disposition: form-data; name="metadata"\r\n')
@@ -249,7 +258,7 @@ def upload_worker(headers: Dict[str, str], worker_name: str) -> None:
     body_parts.append(f"--{boundary}\r\n")
     body_parts.append('Content-Disposition: form-data; name="_worker.js"; filename="_worker.js"\r\n')
     body_parts.append("Content-Type: application/javascript+module\r\n\r\n")
-    body_parts.append(f"{get_worker_js()}\r\n")
+    body_parts.append(f"{get_worker_js(user_uuid, domain)}\r\n")
 
     body_parts.append(f"--{boundary}--\r\n")
 
@@ -301,7 +310,7 @@ def create_kv_namespace(headers: Dict[str, str], kv_name: str) -> str:
     return ns_id
 
 
-def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id: str) -> None:
+def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id: str, user_uuid: str = "", domain: str = "") -> None:
     """给 Worker 绑定 KV namespace"""
     account_id = get_account_id(headers)
 
@@ -340,7 +349,7 @@ def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id
     body_parts.append(f"--{boundary}\r\n")
     body_parts.append('Content-Disposition: form-data; name="_worker.js"; filename="_worker.js"\r\n')
     body_parts.append("Content-Type: application/javascript+module\r\n\r\n")
-    body_parts.append(f"{get_worker_js()}\r\n")
+    body_parts.append(f"{get_worker_js(user_uuid, domain)}\r\n")
 
     body_parts.append(f"--{boundary}--\r\n")
 
@@ -898,7 +907,7 @@ def main() -> None:
     apply_origin_rules(zone_id, headers, routes)
 
     print("[7/8] 部署 Cloudflare Worker 订阅生成器...")
-    worker_domain = find_or_create_worker(headers, worker_name)
+    worker_domain = find_or_create_worker(headers, worker_name, user_uuid, domain)
 
     kv_namespace_id = ""
     if kv_opt_in:
@@ -906,7 +915,7 @@ def main() -> None:
         kv_name = f"{worker_name}-kv"
         kv_namespace_id = create_kv_namespace(headers, kv_name)
         print("[7.2/8] 绑定 KV 到 Worker...")
-        bind_kv_to_worker(headers, worker_name, kv_namespace_id)
+        bind_kv_to_worker(headers, worker_name, kv_namespace_id, user_uuid, domain)
         # 写入初始节点列表（默认优选域名）
         default_kv_nodes = [
             "cloudflare.182682.xyz",
