@@ -383,8 +383,71 @@ function generateSurgeConfig(links) {
 }
 
 // 生成主页
-function generateHomePage(scuValue) {
+function generateHomePage(scuValue, env) {
     const scu = scuValue || 'https://url.v1.mk/sub';
+    const subUuid = env?.SUB_UUID || '';
+    const subDomain = env?.SUB_DOMAIN || '';
+    const workerOrigin = (typeof location !== 'undefined' ? location.origin : '');
+
+    const infoCards = subUuid && subDomain ? `
+        <div class="card">
+            <div style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">部署配置</div>
+            <div class="info-row">
+                <span class="info-label">域名</span>
+                <span class="info-value code" id="deployDomain">${subDomain}</span>
+                <button class="copy-btn" onclick="copyText('deployDomain')">复制</button>
+            </div>
+            <div class="info-row">
+                <span class="info-label">UUID</span>
+                <span class="info-value code" style="font-size:11px" id="deployUuid">${subUuid}</span>
+                <button class="copy-btn" onclick="copyText('deployUuid')">复制</button>
+            </div>
+            <div class="info-row">
+                <span class="info-label">VLESS路径</span>
+                <span class="info-value code" style="font-size:12px">/${subUuid}-vl</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Trojan路径</span>
+                <span class="info-value code" style="font-size:12px">/${subUuid}-tr</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">VMess路径</span>
+                <span class="info-value code" style="font-size:12px">/${subUuid}-vm</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">短路径订阅</div>
+            <div class="info-row">
+                <span class="info-label">VLESS</span>
+                <span class="info-value code" style="font-size:11px" id="urlVl">/vl</span>
+                <button class="copy-btn" onclick="copyUrl('/vl')">复制</button>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Trojan</span>
+                <span class="info-value code" style="font-size:11px" id="urlTr">/tr</span>
+                <button class="copy-btn" onclick="copyUrl('/tr')">复制</button>
+            </div>
+            <div class="info-row">
+                <span class="info-label">VMess</span>
+                <span class="info-value code" style="font-size:11px" id="urlVm">/vm</span>
+                <button class="copy-btn" onclick="copyUrl('/vm')">复制</button>
+            </div>
+            <div class="info-row">
+                <span class="info-label">全部</span>
+                <span class="info-value code" style="font-size:11px" id="urlAll">/all</span>
+                <button class="copy-btn" onclick="copyUrl('/all')">复制</button>
+            </div>
+        </div>
+    ` : `
+        <div class="card">
+            <div style="text-align:center;padding:16px;color:#86868b;">
+                未设置环境变量 SUB_UUID 和 SUB_DOMAIN。<br>
+                请在 Worker 环境变量中设置后刷新页面查看配置信息。
+            </div>
+        </div>
+    `;
+
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -410,6 +473,12 @@ function generateHomePage(scuValue) {
             box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.05);
             border: 0.5px solid rgba(0,0,0,0.06);
         }
+        .info-row { display: flex; padding: 12px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 15px; line-height: 1.5; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #86868b; font-weight: 500; flex-shrink: 0; width: 80px; }
+        .info-value { color: #1d1d1f; word-break: break-all; flex: 1; }
+        .info-value.code { font-family: monospace; font-size: 13px; background: rgba(142,142,147,0.1); padding: 4px 8px; border-radius: 6px; }
+        .copy-btn { margin-left: 8px; padding: 2px 8px; font-size: 12px; color: #007AFF; background: rgba(0,122,255,0.1); border: none; border-radius: 6px; cursor: pointer; white-space: nowrap; }
         .form-group { margin-bottom: 24px; }
         .form-group:last-child { margin-bottom: 0; }
         .form-group label { display: block; font-size: 13px; font-weight: 600; color: #86868b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -459,20 +528,11 @@ function generateHomePage(scuValue) {
             -webkit-appearance: none; white-space: nowrap;
         }
         .client-btn:active { transform: scale(0.97); }
-        .checkbox-label {
-            display: flex; align-items: center; cursor: pointer; font-size: 17px; font-weight: 400;
-            padding: 8px 0; user-select: none;
-        }
-        .checkbox-label input[type="checkbox"] {
-            margin-right: 12px; width: 22px; height: 22px; cursor: pointer; flex-shrink: 0;
-            -webkit-appearance: checkbox; appearance: checkbox;
-        }
         @media (max-width: 480px) {
             .header h1 { font-size: 34px; }
             .client-btn { font-size: 12px; padding: 10px 12px; }
         }
         .footer { text-align: center; padding: 32px 20px; color: #86868b; font-size: 13px; }
-        .footer a { color: #007AFF; text-decoration: none; font-weight: 500; }
         @media (prefers-color-scheme: dark) {
             body { background: linear-gradient(180deg,#000 0%,#1c1c1e 50%,#2c2c2e 100%); color: #f5f5f7; }
             .card { background: rgba(28,28,30,0.75); border: 0.5px solid rgba(255,255,255,0.12); }
@@ -480,6 +540,9 @@ function generateHomePage(scuValue) {
             .form-group input:focus { border-color: #5ac8fa; }
             .list-item { border-bottom-color: rgba(255,255,255,0.1); }
             .list-item-label { color: #f5f5f7; }
+            .info-row { border-bottom-color: rgba(255,255,255,0.08); }
+            .info-value { color: #f5f5f7; }
+            .info-value.code { background: rgba(255,255,255,0.1); }
             .client-btn { background: rgba(0,122,255,0.15)!important; border-color: rgba(0,122,255,0.3)!important; color: #5ac8fa!important; }
         }
     </style>
@@ -488,16 +551,19 @@ function generateHomePage(scuValue) {
     <div class="container">
         <div class="header">
             <h1>订阅生成工具</h1>
-            <p>一键生成订阅链接</p>
+            <p>部署完成，以下为配置信息</p>
         </div>
+
+        ${infoCards}
+
         <div class="card">
             <div class="form-group">
                 <label>域名</label>
-                <input type="text" id="domain" placeholder="请输入您的域名">
+                <input type="text" id="domain" placeholder="请输入您的域名" value="${subDomain}">
             </div>
             <div class="form-group">
                 <label>UUID/Password</label>
-                <input type="text" id="uuid" placeholder="请输入UUID或Password">
+                <input type="text" id="uuid" placeholder="请输入UUID或Password" value="${subUuid}">
             </div>
             <div class="form-group">
                 <label>WebSocket路径（可选）</label>
@@ -506,9 +572,7 @@ function generateHomePage(scuValue) {
             </div>
 
             <div class="list-item" onclick="toggleSwitch('switchNodes')">
-                <div>
-                    <div class="list-item-label">自定义KV节点</div>
-                </div>
+                <div><div class="list-item-label">自定义KV节点</div></div>
                 <div class="switch active" id="switchNodes"></div>
             </div>
 
@@ -570,13 +634,25 @@ function generateHomePage(scuValue) {
                 <input type="text" id="customECHDomain" placeholder="例如: cloudflare-ech.com" style="font-size: 14px;">
             </div>
         </div>
+
         <div class="footer">
             <p>订阅生成工具</p>
         </div>
     </div>
     <script>
         let switches = { switchNodes: true, switchVL: true, switchTJ: false, switchVM: false, switchTLS: false, switchECH: false };
-        const SUB_CONVERTER_URL = "${ scu }";
+        const SUB_CONVERTER_URL = "${scu}";
+
+        function copyText(id) {
+            const el = document.getElementById(id);
+            const text = el.textContent || el.innerText;
+            navigator.clipboard.writeText(text.trim()).then(() => alert('已复制: ' + text.trim()));
+        }
+
+        function copyUrl(path) {
+            const base = window.location.origin;
+            navigator.clipboard.writeText(base + path).then(() => alert('已复制订阅地址: ' + base + path));
+        }
 
         function toggleSwitch(id) {
             const el = document.getElementById(id);
@@ -698,7 +774,7 @@ export default {
         // 主页
         if (path === '/' || path === '') {
             const scuValue = env?.scu || scu;
-            return new Response(generateHomePage(scuValue), {
+            return new Response(generateHomePage(scuValue, env), {
                 headers: { 'Content-Type': 'text/html; charset=utf-8' }
             });
         }
