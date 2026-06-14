@@ -795,6 +795,7 @@ export default {
         if (shortRoute) {
             const uuid = env?.SUB_UUID || SUB_UUID;
             const domain = env?.SUB_DOMAIN || SUB_DOMAIN;
+            const shortId = uuid.substring(0, 8);
             if (!uuid || !domain) {
                 return new Response('请在 Worker 环境变量中设置 SUB_UUID 和 SUB_DOMAIN', { status: 500 });
             }
@@ -813,7 +814,7 @@ export default {
                 ];
                 let parts = [];
                 for (const c of configs) {
-                    const subPath = '/' + uuid + c.suffix;
+                    const subPath = '/' + shortId + c.suffix;
                     let q = "domain=" + domain + "&epd=yes&ev=" + c.ev + "&et=" + c.et + "&evm=" + c.evm + "&dkby=yes&path=" + encodeURIComponent(subPath);
                     if (extraStr) q += "&" + extraStr;
                     const t = "/sub/" + uuid + "?" + q;
@@ -845,7 +846,7 @@ export default {
                 }
             }
             const extraStr = extraParams.toString();
-            const subPath = '/' + uuid + shortRoute.suffix;
+            const subPath = '/' + shortId + shortRoute.suffix;
             let query = "domain=" + domain + "&epd=yes&ev=" + shortRoute.ev + "&et=" + shortRoute.et + "&evm=" + shortRoute.evm + "&dkby=yes&path=" + encodeURIComponent(subPath);
             if (extraStr) query += "&" + extraStr;
             const target = "/sub/" + uuid + "?" + query;
