@@ -55,6 +55,35 @@ sudo python3 deploy.py
 VLESS 订阅: https://cf-xui-sub.xxx.workers.dev/{UUID}/sub?domain=your.com&epd=yes&ev=yes&dkby=yes&path=/xxxx-vl
 ```
 
+### 短路径（方便记忆）
+
+部署后需在 Cloudflare Worker 的 **环境变量** 中设置 `SUB_UUID` 和 `SUB_DOMAIN`，即可使用短路径：
+
+| 路径 | 说明 |
+|------|------|
+| `/vl` | VLESS 订阅 |
+| `/tr` | Trojan 订阅 |
+| `/vm` | VMess 订阅 |
+| `/all` | 全部协议（VLESS + Trojan + VMess） |
+
+**环境变量设置：**
+
+| 变量 | 值示例 | 说明 |
+|------|--------|------|
+| `SUB_UUID` | `c3d382af-5bf6-4f9e-95f6-6c8863828b10` | 你的 UUID |
+| `SUB_DOMAIN` | `your.com` | 你的绑定域名 |
+
+设置后即可使用简洁的订阅链接：
+
+```
+https://cf-xui-sub.xxx.workers.dev/vl
+https://cf-xui-sub.xxx.workers.dev/tr
+https://cf-xui-sub.xxx.workers.dev/vm
+https://cf-xui-sub.xxx.workers.dev/all
+```
+
+> 不设置环境变量不影响原有 `/{UUID}/sub?domain=xxx` 格式的使用。
+
 ### 订阅参数说明
 
 | 参数 | 说明 | 示例 |
