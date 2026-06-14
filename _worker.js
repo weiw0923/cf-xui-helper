@@ -27,6 +27,10 @@ const defaultNodes = [
 ];
 
 // 从 KV 读取节点列表，兼容 txt（每行一个）和 JSON 数组格式
+// 部署配置（通过 Worker 环境变量 SUB_UUID / SUB_DOMAIN 设置）
+const SUB_UUID = ""; // 在 Worker 环境变量 SUB_UUID 中设置
+const SUB_DOMAIN = ""; // 在 Worker 环境变量 SUB_DOMAIN 中设置
+
 async function getCustomNodes(env) {
     try {
         if (!env?.PD) return defaultNodes;
