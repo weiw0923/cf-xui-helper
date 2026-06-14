@@ -793,8 +793,8 @@ export default {
         };
         const shortRoute = shortRoutes[path];
         if (shortRoute) {
-            const uuid = env?.SUB_UUID;
-            const domain = env?.SUB_DOMAIN;
+            const uuid = env?.SUB_UUID || SUB_UUID;
+            const domain = env?.SUB_DOMAIN || SUB_DOMAIN;
             if (!uuid || !domain) {
                 return new Response('请在 Worker 环境变量中设置 SUB_UUID 和 SUB_DOMAIN', { status: 500 });
             }
