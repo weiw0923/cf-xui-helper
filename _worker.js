@@ -385,8 +385,8 @@ function generateSurgeConfig(links) {
 // 生成主页
 function generateHomePage(scuValue, env) {
     const scu = scuValue || 'https://url.v1.mk/sub';
-    const subUuid = env?.SUB_UUID || '';
-    const subDomain = env?.SUB_DOMAIN || '';
+    const subUuid = env?.SUB_UUID || SUB_UUID || "";
+    const subDomain = env?.SUB_DOMAIN || SUB_DOMAIN || "";
     const workerOrigin = (typeof location !== 'undefined' ? location.origin : '');
 
     const infoCards = subUuid && subDomain ? `
