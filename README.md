@@ -57,7 +57,7 @@ VLESS 订阅: https://cf-xui-sub.xxx.workers.dev/{UUID}/sub?domain=your.com&epd=
 
 ### 短路径（方便记忆）
 
-部署后需在 Cloudflare Worker 的 **环境变量** 中设置 `SUB_UUID` 和 `SUB_DOMAIN`，即可使用短路径：
+在 `_worker.js` 中设置 `SUB_UUID` 和 `SUB_DOMAIN` 常量（或在 Worker 环境变量中覆盖），即可使用短路径：
 
 | 路径 | 说明 |
 |------|------|
@@ -66,7 +66,10 @@ VLESS 订阅: https://cf-xui-sub.xxx.workers.dev/{UUID}/sub?domain=your.com&epd=
 | `/vm` | VMess 订阅 |
 | `/all` | 全部协议（VLESS + Trojan + VMess） |
 
-**环境变量设置：**
+**配置方式：**
+
+1. 直接修改 `_worker.js` 中的 `SUB_UUID` 和 `SUB_DOMAIN` 常量
+2. 或在 Worker 环境变量中设置同名变量（优先级更高）
 
 | 变量 | 值示例 | 说明 |
 |------|--------|------|
@@ -82,7 +85,7 @@ https://cf-xui-sub.xxx.workers.dev/vm
 https://cf-xui-sub.xxx.workers.dev/all
 ```
 
-> 不设置环境变量不影响原有 `/{UUID}/sub?domain=xxx` 格式的使用。
+> 不设置 `SUB_UUID` 和 `SUB_DOMAIN` 不影响原有 `/{UUID}/sub?domain=xxx` 格式的使用。
 
 ### 订阅参数说明
 
