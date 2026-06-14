@@ -704,14 +704,60 @@ export default {
         }
 
         // 短路径跳转 — 硬编码，方便记忆
+        // 使用前需在 Worker 环境变量中设置 SUB_UUID 和 SUB_DOMAIN
         const shortRoutes = {
-            '/vl':  { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'yes', et: 'no',  evm: 'no',  path: '/c3d382af-vl' },
-            '/tr':  { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'no',  et: 'yes', evm: 'no',  path: '/c3d382af-tr' },
-            '/vm':  { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'no',  et: 'no',  evm: 'yes', path: '/c3d382af-vm' },
-            '/all': { uuid: 'c3d382af-5bf6-4f9e-95f6-6c8863828b10', ev: 'yes', et: 'yes', evm: 'yes', path: '/c3d382af-vl' },
+            '/vl':  { ev: 'yes', et: 'no',  evm: 'no',  suffix: '-vl' },
+            '/tr':  { ev: 'no',  et: 'yes', evm: 'no',  suffix: '-tr' },
+            '/vm':  { ev: 'no',  et: 'no',  evm: 'yes', suffix: '-vm' },
+            '/all': { ev: 'yes', et: 'yes', evm: 'yes', suffix: '-vl' },
         };
-        const route = shortRoutes[path];
-        if (route) {
+        const shortRoute = shortRoutes[path];
+        if (shortRoute) {
+            const uuid = env?.SUB_UUID;
+            const domain = env?.SUB_DOMAIN;
+            if (!uuid || !domain) {
+                return new Response('请在 Worker 环境变量中设置 SUB_UUID 和 SUB_DOMAIN', { status: 500 });
+            }
+            if (path === '/all') {
+                const extraParams = new URLSearchParams();
+                for (const [k, v] of url.searchParams) {
+                    if (!["domain","ev","et","evm","path","epd","dkby"].includes(k)) {
+                        extraParams.set(k, v);
+                    }
+                }
+                const extraStr = extraParams.toString();
+                const configs = [
+                    { ev: 'yes', et: 'no',  evm: 'no',  suffix: '-vl' },
+                    { ev: 'no',  et: 'yes', evm: 'no',  suffix: '-tr' },
+                    { ev: 'no',  et: 'no',  evm: 'yes', suffix: '-vm' },
+                ];
+                let parts = [];
+                for (const c of configs) {
+                    const subPath = '/' + uuid + c.suffix;
+                    let q = "domain=" + domain + "&epd=yes&ev=" + c.ev + "&et=" + c.et + "&evm=" + c.evm + "&dkby=yes&path=" + encodeURIComponent(subPath);
+                    if (extraStr) q += "&" + extraStr;
+                    const t = "/sub/" + uuid + "?" + q;
+                    const fwd = new URL(t, url.origin);
+                    const resp = await handleSubscriptionRequest(
+                        new Request(fwd, request),
+                        uuid, domain,
+                        c.ev === 'yes', c.et === 'yes', c.evm === 'yes',
+                        true, subPath, null, env
+                    );
+                    parts.push(await resp.text());
+                }
+                const target = url.searchParams.get('target') || 'base64';
+                if (target === 'base64' || target === 'quanx' || target === 'quantumult') {
+                    const decoded = parts.map(function(p) { return atob(p); }).join(String.fromCharCode(10));
+                    return new Response(btoa(decoded), {
+                        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+                    });
+                }
+                const decodedLines = parts.map(function(p) { return atob(p); }).join(String.fromCharCode(10));
+                return new Response(decodedLines, {
+                    headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+                });
+            }
             const extraParams = new URLSearchParams();
             for (const [k, v] of url.searchParams) {
                 if (!["domain","ev","et","evm","path","epd","dkby"].includes(k)) {
@@ -719,15 +765,16 @@ export default {
                 }
             }
             const extraStr = extraParams.toString();
-            let query = "domain=sublx.wilhelm.kdns.fr&epd=yes&ev=" + route.ev + "&et=" + route.et + "&evm=" + route.evm + "&dkby=yes&path=" + encodeURIComponent(route.path);
+            const subPath = '/' + uuid + shortRoute.suffix;
+            let query = "domain=" + domain + "&epd=yes&ev=" + shortRoute.ev + "&et=" + shortRoute.et + "&evm=" + shortRoute.evm + "&dkby=yes&path=" + encodeURIComponent(subPath);
             if (extraStr) query += "&" + extraStr;
-            const target = "/sub/" + route.uuid + "?" + query;
+            const target = "/sub/" + uuid + "?" + query;
             const forwarded = new URL(target, url.origin);
             return await handleSubscriptionRequest(
                 new Request(forwarded, request),
-                route.uuid, 'sublx.wilhelm.kdns.fr',
-                route.ev === 'yes', route.et === 'yes', route.evm === 'yes',
-                true, route.path, null, env
+                uuid, domain,
+                shortRoute.ev === 'yes', shortRoute.et === 'yes', shortRoute.evm === 'yes',
+                true, subPath, null, env
             );
         }
 
