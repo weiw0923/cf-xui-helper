@@ -769,14 +769,103 @@ function generateHomePage(scuValue, env) {
 </html>`;
 }
 
+// ============================================================
+// 密码验证（页面式，密码从 env.PASSWORD 读取）
+// ============================================================
+function generateAuthPage(error = false) {
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>访问验证</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(180deg, #f5f5f7 0%, #ffffff 100%);
+            color: #1d1d1f; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+        }
+        .auth-card {
+            background: rgba(255,255,255,0.8); backdrop-filter: blur(30px);
+            border-radius: 24px; padding: 40px; max-width: 380px; width: 90%;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.05);
+            border: 0.5px solid rgba(0,0,0,0.06); text-align: center;
+        }
+        .auth-card h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+        .auth-card p { font-size: 15px; color: #86868b; margin-bottom: 24px; }
+        .auth-card input {
+            width: 100%; padding: 14px 16px; font-size: 17px;
+            background: rgba(142,142,147,0.12); border: 2px solid transparent; border-radius: 12px;
+            outline: none; margin-bottom: 16px; text-align: center;
+        }
+        .auth-card input:focus { border-color: #007AFF; }
+        .auth-card button {
+            width: 100%; padding: 14px; font-size: 17px; font-weight: 600; color: #fff;
+            background: #007AFF; border: none; border-radius: 14px; cursor: pointer;
+        }
+        .auth-card .error { color: #ff3b30; font-size: 14px; margin-top: 12px; ${error ? '' : 'display: none;'} }
+        @media (prefers-color-scheme: dark) {
+            body { background: linear-gradient(180deg,#000 0%,#1c1c1e 100%); color: #f5f5f7; }
+            .auth-card { background: rgba(28,28,30,0.8); border-color: rgba(255,255,255,0.12); }
+            .auth-card input { background: rgba(142,142,147,0.2); color: #f5f5f7; }
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-card">
+        <h1>访问验证</h1>
+        <p>请输入密码以访问订阅管理页面</p>
+        <input type="password" id="password" placeholder="输入密码" onkeydown="if(event.key==='Enter')verify()">
+        <button onclick="verify()">验证</button>
+        <div class="error" id="errorMsg">密码错误，请重试</div>
+    </div>
+    <script>
+        function verify() {
+            const pwd = document.getElementById('password').value;
+            if (!pwd) return;
+            document.cookie = 'auth_token=' + encodeURIComponent(pwd) + '; path=/; max-age=86400';
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>`;
+}
+
+function verifyAuth(request, env) {
+    const password = env?.ACCESS_PASSWORD;
+    if (!password) return null; // 未设置密码，不验证
+
+    // 从 Cookie 读取 auth_token
+    const cookies = request.headers.get('Cookie') || '';
+    const match = cookies.match(/(?:^|;\s*)auth_token=([^;]*)/);
+    if (match) {
+        const token = decodeURIComponent(match[1]);
+        if (token === password) return null; // 验证通过
+        // Cookie 存在但密码错误 → 显示错误提示
+        return new Response(generateAuthPage(true), {
+            status: 200,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        });
+    }
+
+    return new Response(generateAuthPage(false), {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    });
+}
+
 // 主处理函数
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
         const path = url.pathname;
 
-        // 主页
+        // 主页（静态页面）需要密码验证
         if (path === '/' || path === '') {
+            const authResp = verifyAuth(request, env);
+            if (authResp) return authResp;
+
             const scuValue = env?.scu || scu;
             return new Response(generateHomePage(scuValue, env), {
                 headers: { 'Content-Type': 'text/html; charset=utf-8' }

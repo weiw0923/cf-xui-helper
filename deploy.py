@@ -169,7 +169,7 @@ def fetch_all_zones(headers: Dict[str, str]) -> List[Dict[str, Any]]:
 # ============================================================
 # Worker 部署函数
 # ============================================================
-def find_or_create_worker(headers: Dict[str, str], worker_name: str, user_uuid: str = "", domain: str = "") -> str:
+def find_or_create_worker(headers: Dict[str, str], worker_name: str, user_uuid: str = "", domain: str = "", password: str = "") -> str:
     """查找或创建 Worker，返回 Worker 域名"""
     # 检查是否已存在
     result = call_json_api(
@@ -184,7 +184,7 @@ def find_or_create_worker(headers: Dict[str, str], worker_name: str, user_uuid: 
         print(f"  正在创建 Worker '{worker_name}'...")
 
     # 上传 Worker 代码
-    upload_worker(headers, worker_name, user_uuid, domain)
+    upload_worker(headers, worker_name, user_uuid, domain, password=password)
     worker_domain = f"{worker_name}.{get_worker_subdomain(headers)}"
     print(f"  Worker 部署完成: https://{worker_domain}")
 
@@ -231,7 +231,25 @@ def get_worker_subdomain(headers: Dict[str, str]) -> str:
     return "workers.dev"
 
 
-def upload_worker(headers: Dict[str, str], worker_name: str, user_uuid: str = "", domain: str = "") -> None:
+def build_worker_bindings(password: str = "", kv_namespace_id: str = "") -> list:
+    """构建 Worker 的 bindings 列表"""
+    bindings: list = []
+    if password:
+        bindings.append({
+            "name": "ACCESS_PASSWORD",
+            "type": "secret_text",
+            "text": password,
+        })
+    if kv_namespace_id:
+        bindings.append({
+            "name": "PD",
+            "type": "kv_namespace",
+            "namespace_id": kv_namespace_id,
+        })
+    return bindings
+
+
+def upload_worker(headers: Dict[str, str], worker_name: str, user_uuid: str = "", domain: str = "", password: str = "") -> None:
     """上传 Worker 脚本"""
     account_id = get_account_id(headers)
     url = f"{CF_API_BASE}/accounts/{account_id}/workers/scripts/{worker_name}"
@@ -245,7 +263,7 @@ def upload_worker(headers: Dict[str, str], worker_name: str, user_uuid: str = ""
     # Part 1: 元数据
     metadata = json.dumps({
         "main_module": "_worker.js",
-        "bindings": [],
+        "bindings": build_worker_bindings(password=password),
     })
 
     # Part 2: JS 代码（注入 UUID 和域名）
@@ -310,8 +328,8 @@ def create_kv_namespace(headers: Dict[str, str], kv_name: str) -> str:
     return ns_id
 
 
-def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id: str, user_uuid: str = "", domain: str = "") -> None:
-    """给 Worker 绑定 KV namespace"""
+def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id: str, user_uuid: str = "", domain: str = "", password: str = "") -> None:
+    """给 Worker 绑定 KV namespace 和密码"""
     account_id = get_account_id(headers)
 
     # 先获取当前 Worker 的绑定状态
@@ -323,7 +341,7 @@ def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id
     if not result:
         exit_error(f"获取 Worker '{worker_name}' 信息失败")
 
-    # 重新上传 Worker 并带上 KV 绑定
+    # 重新上传 Worker 并带上绑定
     import io
     import mimetypes
 
@@ -331,13 +349,7 @@ def bind_kv_to_worker(headers: Dict[str, str], worker_name: str, kv_namespace_id
 
     metadata = json.dumps({
         "main_module": "_worker.js",
-        "bindings": [
-            {
-                "name": "PD",
-                "type": "kv_namespace",
-                "namespace_id": kv_namespace_id,
-            }
-        ],
+        "bindings": build_worker_bindings(password=password, kv_namespace_id=kv_namespace_id),
     })
 
     body_parts = []
@@ -857,6 +869,9 @@ def main() -> None:
     create_kv = input("是否创建 KV 绑定(用于自定义节点列表)? (Y/n): ").strip().lower()
     kv_opt_in = create_kv != "n"
 
+    # 密码保护
+    worker_password = input("设置 Worker 页面访问密码(回车=不设置密码): ").strip()
+
     if not domain or not cf_email or not cf_key or not selected_protocols:
         exit_error("域名、邮箱、API Key 和协议选项不能为空")
 
@@ -907,7 +922,7 @@ def main() -> None:
     apply_origin_rules(zone_id, headers, routes)
 
     print("[7/8] 部署 Cloudflare Worker 订阅生成器...")
-    worker_domain = find_or_create_worker(headers, worker_name, user_uuid, domain)
+    worker_domain = find_or_create_worker(headers, worker_name, user_uuid, domain, password=worker_password)
 
     kv_namespace_id = ""
     if kv_opt_in:
@@ -915,7 +930,7 @@ def main() -> None:
         kv_name = f"{worker_name}-kv"
         kv_namespace_id = create_kv_namespace(headers, kv_name)
         print("[7.2/8] 绑定 KV 到 Worker...")
-        bind_kv_to_worker(headers, worker_name, kv_namespace_id, user_uuid, domain)
+        bind_kv_to_worker(headers, worker_name, kv_namespace_id, user_uuid, domain, password=worker_password)
         # 写入初始节点列表（默认优选域名）
         default_kv_nodes = [
             "cloudflare.182682.xyz",
