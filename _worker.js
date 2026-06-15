@@ -548,6 +548,7 @@ function generateHomePage(scuValue, env) {
             .info-value { color: #f5f5f7; }
             .info-value.code { background: rgba(255,255,255,0.1); }
             .client-btn { background: rgba(0,122,255,0.15)!important; border-color: rgba(0,122,255,0.3)!important; color: #5ac8fa!important; }
+            #nodeItems { background: rgba(255,255,255,0.06)!important; }
         }
     </style>
 </head>
@@ -578,6 +579,12 @@ function generateHomePage(scuValue, env) {
             <div class="list-item" onclick="toggleSwitch('switchNodes')">
                 <div><div class="list-item-label">自定义KV节点</div></div>
                 <div class="switch active" id="switchNodes"></div>
+            </div>
+            <div id="kvNodeList" style="margin-top: 4px;">
+                <div style="font-size:12px;color:#86868b;padding:8px 0 4px;">共 <span id="nodeCount">0</span> 个节点</div>
+                <div id="nodeItems" style="max-height:240px;overflow-y:auto;font-size:13px;font-family:monospace;background:rgba(142,142,147,0.06);border-radius:10px;padding:8px 12px;">
+                    <div style="color:#86868b;text-align:center;padding:8px;">加载中...</div>
+                </div>
             </div>
 
             <div class="form-group" style="margin-top: 24px;">
@@ -671,7 +678,51 @@ function generateHomePage(scuValue, env) {
                     if (tlsEl) tlsEl.classList.add('active');
                 }
             }
+            if (id === 'switchNodes') {
+                const listEl = document.getElementById('kvNodeList');
+                if (listEl) {
+                    listEl.style.display = switches.switchNodes ? 'block' : 'none';
+                    if (switches.switchNodes) loadKVNodes();
+                }
+            }
         }
+
+        async function loadKVNodes() {
+            try {
+                const resp = await fetch('/api/nodes');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                const nodes = data.nodes || [];
+                const countEl = document.getElementById('nodeCount');
+                const itemsEl = document.getElementById('nodeItems');
+                if (countEl) countEl.textContent = nodes.length;
+                if (itemsEl) {
+                    if (nodes.length === 0) {
+                        itemsEl.innerHTML = '<div style="color:#86868b;text-align:center;padding:8px;">暂无节点</div>';
+                    } else {
+                        itemsEl.innerHTML = nodes.map(n => {
+                            const name = n.name || n.ip;
+                            return '<div style="padding:4px 0;border-bottom:1px solid rgba(142,142,147,0.1);display:flex;justify-content:space-between;align-items:center;">'
+                                + '<span>' + escapeHtml(name) + '</span>'
+                                + '<button class="copy-btn" onclick="navigator.clipboard.writeText(\'' + escapeHtml(n.ip) + '\').then(()=>alert(\'已复制: ' + escapeHtml(n.ip) + '\'))" style="flex-shrink:0;">复制</button>'
+                                + '</div>';
+                        }).join('');
+                    }
+                }
+            } catch (e) {
+                const itemsEl = document.getElementById('nodeItems');
+                if (itemsEl) itemsEl.innerHTML = '<div style="color:#ff3b30;text-align:center;padding:8px;">加载失败</div>';
+            }
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // 页面加载后自动加载节点列表
+        document.addEventListener('DOMContentLoaded', function() {
+            if (switches.switchNodes) loadKVNodes();
+        });
 
         function tryOpenApp(schemeUrl, fallback, timeout) {
             timeout = timeout || 2500;
@@ -869,6 +920,17 @@ export default {
             const scuValue = env?.scu || scu;
             return new Response(generateHomePage(scuValue, env), {
                 headers: { 'Content-Type': 'text/html; charset=utf-8' }
+            });
+        }
+
+        // API: 获取 KV 节点列表
+        if (path === '/api/nodes') {
+            const authResp = verifyAuth(request, env);
+            if (authResp) return authResp;
+
+            const nodeList = await getCustomNodes(env);
+            return new Response(JSON.stringify({ nodes: nodeList }), {
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
             });
         }
 
