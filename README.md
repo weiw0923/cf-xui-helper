@@ -73,8 +73,9 @@ VLESS 订阅: https://cf-xui-sub.xxx.workers.dev/{UUID}/sub?domain=your.com&epd=
 
 | 变量 | 值示例 | 说明 |
 |------|--------|------|
-| `SUB_UUID` | `c3d382af-5bf6-4f9e-95f6-6c8863828b10` | 你的 UUID |
-| `SUB_DOMAIN` | `your.com` | 你的绑定域名 |
+| `SUB_UUID` | `c3d382af-5bf6-4f9e-95f6-6c8863828b10` | 你的 UUID，预填到页面并用于短路径路由 |
+| `SUB_DOMAIN` | `your.com` | 你的绑定域名，预填到页面 |
+| `ACCESS_PASSWORD` | 任意密码 | （可选）Web 页面密码保护 |
 
 设置后即可使用简洁的订阅链接：
 
@@ -100,7 +101,7 @@ https://cf-xui-sub.xxx.workers.dev/all
 | `ech` | 启用 ECH（Encrypted Client Hello） | `yes` / `no` |
 | `customDNS` | ECH 自定义 DoH 地址 | `https://dns.example.com/dns-query` |
 | `customECHDomain` | ECH 域名 | `cloudflare-ech.com` |
-| `path` | 自定义 WebSocket 路径 | `/custom-path` |
+| `path` | 自定义 WebSocket 路径 | `/c3d382af-vl`（短路径默认使用 UUID 前 8 位） |
 | `target` | 客户端输出格式 | `base64` / `clash` / `surge` / `quantumult` |
 
 ### 支持的客户端格式（`target=` 参数）
@@ -116,10 +117,21 @@ https://cf-xui-sub.xxx.workers.dev/all
 
 直接访问 Worker 地址（如 `https://cf-xui-sub.xxx.workers.dev`）即可打开 Web 页面：
 
-- 填写域名、UUID/Password、WebSocket 路径
-- 开关自定义 KV 节点和协议（VLESS/Trojan/VMess）
-- 选择客户端一键生成订阅链接（Clash / STASH / Surge / Sing-box / Loon / Quantumult X / V2Ray / V2RayNG / Nekoray / Shadowrocket）
-- 支持 ECH 开关和自定义 DNS
+- **域名/UUID** 自动预填（通过环境变量 `SUB_UUID` / `SUB_DOMAIN`）
+- **自定义 KV 节点** 开关：打开显示 KV 空间中的节点，关闭显示内置默认节点（带数量统计和滚动）
+- **短路径订阅** 开关：VLESS / Trojan / VMess / 全部，每个开关下方显示对应订阅路径，点击复制
+- **TLS / ECH** 开关
+- **客户端选择** 在最底部：Clash / STASH / Surge / Sing-box / Loon / Quantumult X / V2Ray / V2RayNG / Nekoray / Shadowrocket
+
+### 密码保护（可选）
+
+设置 Worker 环境变量 `ACCESS_PASSWORD` 即可为 Web 页面添加密码验证：
+
+| 变量 | 说明 |
+|------|------|
+| `ACCESS_PASSWORD` | 设置后访问页面需输入密码，不设置则不验证 |
+
+密码通过 Cookie 存储，有效期 1 天。改密码只需在 Cloudflare Dashboard 修改此 Secret，无需重新部署。
 
 ## 自定义 KV 节点
 
@@ -139,6 +151,10 @@ your-cdn.example.com
 ```
 
 部署脚本会自动写入默认的优选域名列表。不创建 KV 也没关系，Worker 会使用内置的默认节点列表作为回退。
+
+在 Web 页面中，**自定义 KV 节点**开关控制：
+- **打开** → 从 KV 读取节点列表
+- **关闭** → 显示内置的 11 个默认节点
 
 ## Worker 内置默认节点
 
@@ -162,7 +178,9 @@ xn--b6gac.eu.org
 用户 → Cloudflare CDN (443)
          ├── Origin Rules → VPS 随机端口 → 3x-ui (VLESS/Trojan/VMess)
          └── Worker 路由 → /{UUID}/sub → 订阅链接
-                          → /          → Web 交互页面
+                          → /          → Web 交互页面（可选密码保护）
+                          → /vl,/tr,/vm,/all → 短路径订阅
+                          → /api/nodes → KV 节点列表 JSON
 ```
 
 ## 注意事项
