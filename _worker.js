@@ -697,21 +697,25 @@ function generateHomePage(scuValue, env) {
                 const itemsEl = document.getElementById('nodeItems');
                 if (countEl) countEl.textContent = nodes.length;
                 if (itemsEl) {
-                    if (nodes.length === 0) {
-                        itemsEl.innerHTML = '<div style="color:#86868b;text-align:center;padding:8px;">暂无节点</div>';
-                    } else {
-                        itemsEl.innerHTML = nodes.map(n => {
-                            const name = n.name || n.ip;
-                            return '<div style="padding:4px 0;border-bottom:1px solid rgba(142,142,147,0.1);display:flex;justify-content:space-between;align-items:center;">'
-                                + '<span>' + escapeHtml(name) + '</span>'
-                                + '<button class="copy-btn" onclick="navigator.clipboard.writeText(\'' + escapeHtml(n.ip) + '\').then(()=>alert(\'已复制: ' + escapeHtml(n.ip) + '\'))" style="flex-shrink:0;">复制</button>'
-                                + '</div>';
-                        }).join('');
-                    }
+                    itemsEl.innerHTML = nodes.map(n => {
+                        const name = n.name || n.ip;
+                        return '<div style="padding:4px 0;border-bottom:1px solid rgba(142,142,147,0.1);">' + escapeHtml(name) + '</div>';
+                    }).join('');
                 }
             } catch (e) {
+                // 加载失败时显示默认节点
+                const defaultList = [
+                    "cloudflare.182682.xyz", "freeyx.cloudflare88.eu.org", "bestcf.top",
+                    "cdn.2020111.xyz", "cf.0sm.com", "cf.090227.xyz",
+                    "cf.zhetengsha.eu.org", "cfip.1323123.xyz",
+                    "cloudflare-ip.mofashi.ltd", "cf.877771.xyz", "xn--b6gac.eu.org"
+                ];
+                const countEl = document.getElementById('nodeCount');
                 const itemsEl = document.getElementById('nodeItems');
-                if (itemsEl) itemsEl.innerHTML = '<div style="color:#ff3b30;text-align:center;padding:8px;">加载失败</div>';
+                if (countEl) countEl.textContent = defaultList.length;
+                if (itemsEl) {
+                    itemsEl.innerHTML = defaultList.map(n => '<div style="padding:4px 0;border-bottom:1px solid rgba(142,142,147,0.1);">' + n + '</div>').join('');
+                }
             }
         }
 
