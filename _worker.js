@@ -389,69 +389,8 @@ function generateSurgeConfig(links) {
 // 生成主页
 function generateHomePage(scuValue, env) {
     const scu = scuValue || 'https://url.v1.mk/sub';
-    const subUuid = env?.SUB_UUID || SUB_UUID || "";
-    const subDomain = env?.SUB_DOMAIN || SUB_DOMAIN || "";
-    const workerOrigin = (typeof location !== 'undefined' ? location.origin : '');
-
-    const infoCards = subUuid && subDomain ? `
-        <div class="card">
-            <div style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">部署配置</div>
-            <div class="info-row">
-                <span class="info-label">域名</span>
-                <span class="info-value code" id="deployDomain">${subDomain}</span>
-                <button class="copy-btn" onclick="copyText('deployDomain')">复制</button>
-            </div>
-            <div class="info-row">
-                <span class="info-label">UUID</span>
-                <span class="info-value code" style="font-size:11px" id="deployUuid">${subUuid}</span>
-                <button class="copy-btn" onclick="copyText('deployUuid')">复制</button>
-            </div>
-            <div class="info-row">
-                <span class="info-label">VLESS路径</span>
-                <span class="info-value code" style="font-size:12px">/${subUuid}-vl</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Trojan路径</span>
-                <span class="info-value code" style="font-size:12px">/${subUuid}-tr</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">VMess路径</span>
-                <span class="info-value code" style="font-size:12px">/${subUuid}-vm</span>
-            </div>
-        </div>
-
-        <div class="card">
-            <div style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">短路径订阅</div>
-            <div class="info-row">
-                <span class="info-label">VLESS</span>
-                <span class="info-value code" style="font-size:11px" id="urlVl">/vl</span>
-                <button class="copy-btn" onclick="copyUrl('/vl')">复制</button>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Trojan</span>
-                <span class="info-value code" style="font-size:11px" id="urlTr">/tr</span>
-                <button class="copy-btn" onclick="copyUrl('/tr')">复制</button>
-            </div>
-            <div class="info-row">
-                <span class="info-label">VMess</span>
-                <span class="info-value code" style="font-size:11px" id="urlVm">/vm</span>
-                <button class="copy-btn" onclick="copyUrl('/vm')">复制</button>
-            </div>
-            <div class="info-row">
-                <span class="info-label">全部</span>
-                <span class="info-value code" style="font-size:11px" id="urlAll">/all</span>
-                <button class="copy-btn" onclick="copyUrl('/all')">复制</button>
-            </div>
-        </div>
-    ` : `
-        <div class="card">
-            <div style="text-align:center;padding:16px;color:#86868b;">
-                未设置环境变量 SUB_UUID 和 SUB_DOMAIN。<br>
-                请在 Worker 环境变量中设置后刷新页面查看配置信息。
-            </div>
-        </div>
-    `;
-
+    const subUuid = env?.SUB_UUID || "";
+    const subDomain = env?.SUB_DOMAIN || "";
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -486,16 +425,15 @@ function generateHomePage(scuValue, env) {
         .form-group { margin-bottom: 24px; }
         .form-group:last-child { margin-bottom: 0; }
         .form-group label { display: block; font-size: 13px; font-weight: 600; color: #86868b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .form-group input, .form-group textarea {
+        .form-group input {
             width: 100%; padding: 14px 16px; font-size: 17px; font-weight: 400; color: #1d1d1f;
             background: rgba(142,142,147,0.12); border: 2px solid transparent; border-radius: 12px;
             outline: none; transition: all 0.2s ease; -webkit-appearance: none;
         }
-        .form-group input:focus, .form-group textarea:focus {
+        .form-group input:focus {
             background: rgba(142,142,147,0.16); border-color: #007AFF; transform: scale(1.005);
         }
-        .form-group input::placeholder, .form-group textarea::placeholder { color: #86868b; }
-        .form-group small { display: block; margin-top: 8px; color: #86868b; font-size: 13px; line-height: 1.4; }
+        .form-group input::placeholder { color: #86868b; }
         .list-item {
             display: flex; align-items: center; justify-content: space-between; padding: 16px 0;
             min-height: 52px; cursor: pointer; border-bottom: 0.5px solid rgba(0,0,0,0.08);
@@ -503,6 +441,7 @@ function generateHomePage(scuValue, env) {
         .list-item:last-child { border-bottom: none; }
         .list-item:active { background: rgba(142,142,147,0.08); margin: 0 -28px; padding-left: 28px; padding-right: 28px; }
         .list-item-label { font-size: 17px; font-weight: 400; color: #1d1d1f; flex: 1; }
+        .list-item-desc { font-size: 13px; color: #86868b; margin-top: 4px; }
         .switch {
             position: relative; width: 51px; height: 31px; background: rgba(142,142,147,0.3);
             border-radius: 16px; transition: background 0.3s ease; cursor: pointer; flex-shrink: 0;
@@ -514,17 +453,20 @@ function generateHomePage(scuValue, env) {
             box-shadow: 0 2px 6px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1);
         }
         .switch.active::after { transform: translateX(20px); }
-        .btn {
-            width: 100%; padding: 16px; font-size: 17px; font-weight: 600; color: #fff;
-            background: #007AFF; border: none; border-radius: 14px; cursor: pointer;
-            transition: all 0.2s ease; margin-top: 8px; -webkit-appearance: none;
-            box-shadow: 0 4px 12px rgba(0,122,255,0.25);
+        .short-path-url {
+            font-family: monospace; font-size: 12px; color: #007aff; word-break: break-all;
+            padding: 6px 12px; margin-bottom: 8px; background: rgba(0,122,255,0.08); border-radius: 8px;
+            cursor: pointer; display: none; line-height: 1.5;
         }
-        .btn:active { transform: scale(0.97); }
-        .result-url {
-            margin-top: 12px; padding: 12px; background: rgba(0,122,255,0.1); border-radius: 10px;
-            font-size: 13px; color: #007aff; word-break: break-all; line-height: 1.5; display: none;
+        .short-path-url:active { background: rgba(0,122,255,0.2); }
+        .section-label { font-size: 13px; font-weight: 600; color: #86868b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 16px; }
+        .node-count { font-size: 12px; color: #86868b; padding: 8px 0 4px; }
+        .node-items {
+            max-height: 240px; overflow-y: auto; font-size: 13px; font-family: monospace;
+            background: rgba(142,142,147,0.06); border-radius: 10px; padding: 8px 12px;
         }
+        .node-item { padding: 4px 0; border-bottom: 1px solid rgba(142,142,147,0.1); }
+        .node-item:last-child { border-bottom: none; }
         .client-btn {
             padding: 12px 16px; font-size: 14px; font-weight: 500; color: #007AFF;
             background: rgba(0,122,255,0.1); border: 1px solid rgba(0,122,255,0.2);
@@ -532,6 +474,7 @@ function generateHomePage(scuValue, env) {
             -webkit-appearance: none; white-space: nowrap;
         }
         .client-btn:active { transform: scale(0.97); }
+        .result-url {
         @media (max-width: 480px) {
             .header h1 { font-size: 34px; }
             .client-btn { font-size: 12px; padding: 10px 12px; }
@@ -540,13 +483,12 @@ function generateHomePage(scuValue, env) {
         @media (prefers-color-scheme: dark) {
             body { background: linear-gradient(180deg,#000 0%,#1c1c1e 50%,#2c2c2e 100%); color: #f5f5f7; }
             .card { background: rgba(28,28,30,0.75); border: 0.5px solid rgba(255,255,255,0.12); }
-            .form-group input, .form-group textarea { background: rgba(142,142,147,0.2); color: #f5f5f7; }
+            .form-group input { background: rgba(142,142,147,0.2); color: #f5f5f7; }
             .form-group input:focus { border-color: #5ac8fa; }
             .list-item { border-bottom-color: rgba(255,255,255,0.1); }
             .list-item-label { color: #f5f5f7; }
-            .info-row { border-bottom-color: rgba(255,255,255,0.08); }
-            .info-value { color: #f5f5f7; }
-            .info-value.code { background: rgba(255,255,255,0.1); }
+            .short-path-url { background: rgba(0,122,255,0.15)!important; color: #5ac8fa!important; }
+            .node-items { background: rgba(255,255,255,0.06)!important; }
             .client-btn { background: rgba(0,122,255,0.15)!important; border-color: rgba(0,122,255,0.3)!important; color: #5ac8fa!important; }
             #nodeItems { background: rgba(255,255,255,0.06)!important; }
         }
@@ -562,6 +504,8 @@ function generateHomePage(scuValue, env) {
         ${infoCards}
 
         <div class="card">
+
+            <!-- 1. 域名 + UUID 预填入 -->
             <div class="form-group">
                 <label>域名</label>
                 <input type="text" id="domain" placeholder="请输入您的域名" value="${subDomain}">
@@ -570,41 +514,70 @@ function generateHomePage(scuValue, env) {
                 <label>UUID/Password</label>
                 <input type="text" id="uuid" placeholder="请输入UUID或Password" value="${subUuid}">
             </div>
-            <div class="form-group">
-                <label>WebSocket路径（可选）</label>
-                <input type="text" id="customPath" placeholder="留空则使用默认路径 /" value="/">
-                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">自定义WebSocket路径，例如：/v2ray 或 /</small>
             </div>
 
+            <!-- 2. 自定义KV节点（关闭时显示默认节点，打开时显示KV节点，有数量统计，可滚动） -->
             <div class="list-item" onclick="toggleSwitch('switchNodes')">
                 <div><div class="list-item-label">自定义KV节点</div></div>
                 <div class="switch active" id="switchNodes"></div>
             </div>
-            <div id="kvNodeList" style="margin-top: 4px;">
-                <div style="font-size:12px;color:#86868b;padding:8px 0 4px;">共 <span id="nodeCount">0</span> 个节点</div>
-                <div id="nodeItems" style="max-height:240px;overflow-y:auto;font-size:13px;font-family:monospace;background:rgba(142,142,147,0.06);border-radius:10px;padding:8px 12px;">
-                    <div style="color:#86868b;text-align:center;padding:8px;">加载中...</div>
-                </div>
+            <div id="kvNodeList">
+                <div class="node-count">共 <span id="nodeCount">11</span> 个节点</div>
+                <div class="node-items" id="nodeItems"></div>
             </div>
 
-            <div class="form-group" style="margin-top: 24px;">
-                <label>协议选择</label>
-                <div style="margin-top: 8px;">
-                    <div class="list-item" onclick="toggleSwitch('switchVL')">
-                        <div><div class="list-item-label">VLESS</div></div>
-                        <div class="switch active" id="switchVL"></div>
-                    </div>
-                    <div class="list-item" onclick="toggleSwitch('switchTJ')">
-                        <div><div class="list-item-label">Trojan</div></div>
-                        <div class="switch" id="switchTJ"></div>
-                    </div>
-                    <div class="list-item" onclick="toggleSwitch('switchVM')">
-                        <div><div class="list-item-label">VMess</div></div>
-                        <div class="switch" id="switchVM"></div>
-                    </div>
+            <!-- 3. 4个短路径开关，每个下方显示短路径内容 -->
+            <div class="section-label">短路径订阅</div>
+
+            <div class="list-item" onclick="toggleSwitch('switchVL')">
+                <div><div class="list-item-label">VLESS</div></div>
+                <div class="switch active" id="switchVL"></div>
+            </div>
+            <div class="short-path-url" id="shortUrlVL" onclick="copyShortUrl('vl')">/vl</div>
+
+            <div class="list-item" onclick="toggleSwitch('switchTJ')">
+                <div><div class="list-item-label">Trojan</div></div>
+                <div class="switch" id="switchTJ"></div>
+            </div>
+            <div class="short-path-url" id="shortUrlTJ" onclick="copyShortUrl('tr')">/tr</div>
+
+            <div class="list-item" onclick="toggleSwitch('switchVM')">
+                <div><div class="list-item-label">VMess</div></div>
+                <div class="switch" id="switchVM"></div>
+            </div>
+            <div class="short-path-url" id="shortUrlVM" onclick="copyShortUrl('vm')">/vm</div>
+
+            <div class="list-item" onclick="toggleSwitch('switchAll')">
+                <div><div class="list-item-label">全部</div></div>
+                <div class="switch" id="switchAll"></div>
+            </div>
+            <div class="short-path-url" id="shortUrlAll" onclick="copyShortUrl('all')">/all</div>
+
+            <!-- 4. TLS + ECH -->
+            <div class="list-item" onclick="toggleSwitch('switchTLS')" style="margin-top: 8px;">
+                <div>
+                    <div class="list-item-label">仅TLS节点</div>
+                    <div class="list-item-desc">启用后只生成带TLS的节点</div>
                 </div>
+                <div class="switch" id="switchTLS"></div>
             </div>
 
+            <div class="list-item" onclick="toggleSwitch('switchECH')">
+                <div>
+                    <div class="list-item-label">ECH (Encrypted Client Hello)</div>
+                    <div class="list-item-desc">启用时自动仅TLS；需客户端支持</div>
+                </div>
+                <div class="switch" id="switchECH"></div>
+            </div>
+            <div class="form-group" id="echOptionsGroup" style="margin-top: 12px; display: none;">
+                <label>ECH 自定义 DNS（可选）</label>
+                <input type="text" id="customDNS" placeholder="例如: https://dns.joeyblog.eu.org/joeyblog" style="font-size: 14px;">
+                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">用于 ECH 配置查询的 DoH 地址</small>
+                <label style="margin-top: 12px; display: block;">ECH 域名（可选）</label>
+                <input type="text" id="customECHDomain" placeholder="例如: cloudflare-ech.com" style="font-size: 14px;">
+            </div>
+
+            <!-- 5. 客户端选择（最底部） -->
             <div class="form-group" style="margin-top: 24px;">
                 <label>客户端选择</label>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 8px;">
@@ -622,28 +595,6 @@ function generateHomePage(scuValue, env) {
                 <div class="result-url" id="clientSubscriptionUrl"></div>
             </div>
 
-            <div class="list-item" onclick="toggleSwitch('switchTLS')" style="margin-top: 8px;">
-                <div>
-                    <div class="list-item-label">仅TLS节点</div>
-                    <div class="list-item-description" style="font-size: 13px; color: #86868b; margin-top: 4px;">启用后只生成带TLS的节点</div>
-                </div>
-                <div class="switch" id="switchTLS"></div>
-            </div>
-
-            <div class="list-item" onclick="toggleSwitch('switchECH')" style="margin-top: 8px;">
-                <div>
-                    <div class="list-item-label">ECH (Encrypted Client Hello)</div>
-                    <div class="list-item-description" style="font-size: 13px; color: #86868b; margin-top: 4px;">启用后节点链接将携带 ECH 参数，需客户端支持；开启时自动仅TLS</div>
-                </div>
-                <div class="switch" id="switchECH"></div>
-            </div>
-            <div class="form-group" id="echOptionsGroup" style="margin-top: 12px; display: none;">
-                <label>ECH 自定义 DNS（可选）</label>
-                <input type="text" id="customDNS" placeholder="例如: https://dns.joeyblog.eu.org/joeyblog" style="font-size: 14px;">
-                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">用于 ECH 配置查询的 DoH 地址</small>
-                <label style="margin-top: 12px; display: block;">ECH 域名（可选）</label>
-                <input type="text" id="customECHDomain" placeholder="例如: cloudflare-ech.com" style="font-size: 14px;">
-            </div>
         </div>
 
         <div class="footer">
@@ -651,24 +602,41 @@ function generateHomePage(scuValue, env) {
         </div>
     </div>
     <script>
-        let switches = { switchNodes: true, switchVL: true, switchTJ: false, switchVM: false, switchTLS: false, switchECH: false };
+        let switches = { switchNodes: true, switchVL: true, switchTJ: false, switchVM: false, switchAll: false, switchTLS: false, switchECH: false };
         const SUB_CONVERTER_URL = "${scu}";
+        const WORKER_ORIGIN = self.location.origin;
 
-        function copyText(id) {
-            const el = document.getElementById(id);
-            const text = el.textContent || el.innerText;
-            navigator.clipboard.writeText(text.trim()).then(() => alert('已复制: ' + text.trim()));
-        }
-
-        function copyUrl(path) {
-            const base = window.location.origin;
-            navigator.clipboard.writeText(base + path).then(() => alert('已复制订阅地址: ' + base + path));
-        }
-
+        // 切换开关
         function toggleSwitch(id) {
             const el = document.getElementById(id);
             switches[id] = !switches[id];
             el.classList.toggle('active');
+
+            // 短路径开关：显示/隐藏对应的短路径URL
+            if (id === 'switchVL' || id === 'switchTJ' || id === 'switchVM' || id === 'switchAll') {
+                const urlMap = { switchVL: 'shortUrlVL', switchTJ: 'shortUrlTJ', switchVM: 'shortUrlVM', switchAll: 'shortUrlAll' };
+                const urlEl = document.getElementById(urlMap[id]);
+                if (urlEl) urlEl.style.display = switches[id] ? 'block' : 'none';
+                // "全部"开关联动 VL/TJ/VM
+                if (id === 'switchAll') {
+                    const linked = ['switchVL','switchTJ','switchVM'];
+                    linked.forEach(sid => {
+                        const sel = document.getElementById(sid);
+                        if (sel) {
+                            const wasActive = switches[sid];
+                            if (wasActive !== switches.switchAll) {
+                                switches[sid] = switches.switchAll;
+                                sel.classList.toggle('active', switches.switchAll);
+                                const urlEl2 = document.getElementById(urlMap[sid]);
+                                if (urlEl2) urlEl2.style.display = switches.switchAll ? 'block' : 'none';
+                            }
+                        }
+                    });
+                }
+                return;
+            }
+
+            // ECH 联动
             if (id === 'switchECH') {
                 const echOpt = document.getElementById('echOptionsGroup');
                 if (echOpt) echOpt.style.display = switches.switchECH ? 'block' : 'none';
@@ -678,43 +646,70 @@ function generateHomePage(scuValue, env) {
                     if (tlsEl) tlsEl.classList.add('active');
                 }
             }
+            // KV节点 开关：打开加载KV节点，关闭显示默认节点
             if (id === 'switchNodes') {
-                const listEl = document.getElementById('kvNodeList');
-                if (listEl) {
-                    listEl.style.display = switches.switchNodes ? 'block' : 'none';
-                    if (switches.switchNodes) loadKVNodes();
+                if (switches.switchNodes) {
+                    loadKVNodes();
+                } else {
+                    showDefaultNodes();
                 }
             }
         }
 
+        // 页面加载时初始化各开关状态
+        document.addEventListener('DOMContentLoaded', function() {
+            ['switchVL','switchTJ','switchVM','switchAll'].forEach(id => {
+                const urlMap = { switchVL: 'shortUrlVL', switchTJ: 'shortUrlTJ', switchVM: 'shortUrlVM', switchAll: 'shortUrlAll' };
+                const urlEl = document.getElementById(urlMap[id]);
+                if (urlEl) urlEl.style.display = switches[id] ? 'block' : 'none';
+            });
+            // 开关打开则加载KV节点，否则显示默认节点
+            if (switches.switchNodes) {
+                loadKVNodes();
+            } else {
+                showDefaultNodes();
+            }
+        });
+
+        // 复制短路径 URL
+        function copyShortUrl(path) {
+            const full = WORKER_ORIGIN + '/' + path;
+            navigator.clipboard.writeText(full).then(() => alert('已复制: ' + full));
+        }
+
+        // 加载 KV 节点列表
         async function loadKVNodes() {
             try {
                 const resp = await fetch('/api/nodes');
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
                 const nodes = data.nodes || [];
-                const countEl = document.getElementById('nodeCount');
-                const itemsEl = document.getElementById('nodeItems');
-                if (countEl) countEl.textContent = nodes.length;
-                if (itemsEl) {
-                    itemsEl.innerHTML = nodes.map(n => {
-                        const name = n.name || n.ip;
-                        return '<div style="padding:4px 0;border-bottom:1px solid rgba(142,142,147,0.1);">' + escapeHtml(name) + '</div>';
-                    }).join('');
-                }
+                renderNodeList(nodes);
             } catch (e) {
-                // 加载失败时显示默认节点
-                const defaultList = [
-                    "cloudflare.182682.xyz", "freeyx.cloudflare88.eu.org", "bestcf.top",
-                    "cdn.2020111.xyz", "cf.0sm.com", "cf.090227.xyz",
-                    "cf.zhetengsha.eu.org", "cfip.1323123.xyz",
-                    "cloudflare-ip.mofashi.ltd", "cf.877771.xyz", "xn--b6gac.eu.org"
-                ];
-                const countEl = document.getElementById('nodeCount');
-                const itemsEl = document.getElementById('nodeItems');
-                if (countEl) countEl.textContent = defaultList.length;
-                if (itemsEl) {
-                    itemsEl.innerHTML = defaultList.map(n => '<div style="padding:4px 0;border-bottom:1px solid rgba(142,142,147,0.1);">' + n + '</div>').join('');
+                showDefaultNodes();
+            }
+        }
+
+        // 显示默认 11 个节点
+        function showDefaultNodes() {
+            const defaultList = [
+                "cloudflare.182682.xyz", "freeyx.cloudflare88.eu.org", "bestcf.top",
+                "cdn.2020111.xyz", "cf.0sm.com", "cf.090227.xyz",
+                "cf.zhetengsha.eu.org", "cfip.1323123.xyz",
+                "cloudflare-ip.mofashi.ltd", "cf.877771.xyz", "xn--b6gac.eu.org"
+            ];
+            renderNodeList(defaultList.map(n => ({ ip: n, name: n })));
+        }
+
+        function renderNodeList(nodes) {
+            const countEl = document.getElementById('nodeCount');
+            const itemsEl = document.getElementById('nodeItems');
+            if (countEl) countEl.textContent = nodes.length;
+            if (itemsEl) {
+                if (nodes.length === 0) {
+                    itemsEl.innerHTML = '<div style="color:#86868b;text-align:center;padding:8px;">暂无节点</div>';
+                } else {
+                    itemsEl.innerHTML = nodes.map(n => '<div class="node-item">' + escapeHtml(n.name || n.ip) + '</div>').join('');
                 }
             }
         }
@@ -722,11 +717,6 @@ function generateHomePage(scuValue, env) {
         function escapeHtml(str) {
             return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
-
-        // 页面加载后自动加载节点列表
-        document.addEventListener('DOMContentLoaded', function() {
-            if (switches.switchNodes) loadKVNodes();
-        });
 
         function tryOpenApp(schemeUrl, fallback, timeout) {
             timeout = timeout || 2500;
@@ -749,15 +739,20 @@ function generateHomePage(scuValue, env) {
         function generateClientLink(clientType, clientName) {
             const domain = document.getElementById('domain').value.trim();
             const uuid = document.getElementById('uuid').value.trim();
-            const customPath = document.getElementById('customPath').value.trim() || '/';
             if (!domain || !uuid) { alert('请先填写域名和UUID/Password'); return; }
             if (!switches.switchVL && !switches.switchTJ && !switches.switchVM) {
-                alert('请至少选择一个协议'); return;
+                alert('请至少开启一个短路径协议'); return;
             }
 
             const baseUrl = new URL(window.location.href).origin;
+            const shortId = uuid.substring(0, 8);
+            // 根据第一个开启的协议确定 path
+            let activePath = '/' + shortId + '-vl';
+            if (!switches.switchVL && switches.switchTJ) activePath = '/' + shortId + '-tr';
+            else if (!switches.switchVL && !switches.switchTJ && switches.switchVM) activePath = '/' + shortId + '-vm';
             let subUrl = baseUrl + '/' + uuid + '/sub?domain=' + encodeURIComponent(domain)
-                + '&epd=' + (switches.switchNodes ? 'yes' : 'no');
+                + '&epd=' + (switches.switchNodes ? 'yes' : 'no')
+                + '&path=' + encodeURIComponent(activePath);
             if (switches.switchVL) subUrl += '&ev=yes';
             if (switches.switchTJ) subUrl += '&et=yes';
             if (switches.switchVM) subUrl += '&evm=yes';
@@ -769,7 +764,6 @@ function generateHomePage(scuValue, env) {
                 const domainVal = document.getElementById('customECHDomain') && document.getElementById('customECHDomain').value.trim();
                 if (domainVal) subUrl += '&customECHDomain=' + encodeURIComponent(domainVal);
             }
-            if (customPath && customPath !== '/') subUrl += '&path=' + encodeURIComponent(customPath);
 
             let finalUrl = subUrl;
             const urlEl = document.getElementById('clientSubscriptionUrl');
@@ -929,9 +923,6 @@ export default {
 
         // API: 获取 KV 节点列表
         if (path === '/api/nodes') {
-            const authResp = verifyAuth(request, env);
-            if (authResp) return authResp;
-
             const nodeList = await getCustomNodes(env);
             return new Response(JSON.stringify({ nodes: nodeList }), {
                 headers: { 'Content-Type': 'application/json; charset=utf-8' }
@@ -950,10 +941,10 @@ export default {
         if (shortRoute) {
             const uuid = env?.SUB_UUID || SUB_UUID;
             const domain = env?.SUB_DOMAIN || SUB_DOMAIN;
-            const shortId = uuid.substring(0, 8);
             if (!uuid || !domain) {
                 return new Response('请在 Worker 环境变量中设置 SUB_UUID 和 SUB_DOMAIN', { status: 500 });
             }
+            const shortId = uuid.substring(0, 8);
             if (path === '/all') {
                 const extraParams = new URLSearchParams();
                 for (const [k, v] of url.searchParams) {
