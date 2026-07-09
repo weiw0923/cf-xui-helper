@@ -51,11 +51,17 @@ def get_worker_js(user_uuid: str = "", domain: str = "") -> str:
         except Exception:
             exit_error("无法获取 _worker.js，请确保该文件与 deploy.py 在同一目录")
 
-    # 注入 UUID 和域名到 _worker.js 常量中
+    # 注入 UUID 和域名到 _worker.js 常量中（检查替换次数，_worker.js 格式变化时静默失败会导致 Worker 订阅 500）
     if user_uuid:
-        js = js.replace('const SUB_UUID = "";', f'const SUB_UUID = "{user_uuid}";')
+        target = 'const SUB_UUID = "";'
+        if js.count(target) == 0:
+            exit_error(f"_worker.js 中未找到 '{target}'，模板格式已变更，请检查")
+        js = js.replace(target, f'const SUB_UUID = "{user_uuid}";')
     if domain:
-        js = js.replace('const SUB_DOMAIN = "";', f'const SUB_DOMAIN = "{domain}";')
+        target = 'const SUB_DOMAIN = "";'
+        if js.count(target) == 0:
+            exit_error(f"_worker.js 中未找到 '{target}'，模板格式已变更，请检查")
+        js = js.replace(target, f'const SUB_DOMAIN = "{domain}";')
     return js
 
 
@@ -205,14 +211,24 @@ def _enable_worker_route(headers: Dict[str, str], worker_name: str) -> None:
     )
     if result.get("success", False):
         print(f"  已启用 workers.dev 子域名路由")
+    else:
+        print(f"警告：启用 workers.dev 子域名路由失败（success=false），{worker_name}.workers.dev 可能不可访问；errors={result.get('errors')}")
+
+
+_ACCOUNT_ID_CACHE: Dict[str, str] = {}
 
 
 def get_account_id(headers: Dict[str, str]) -> str:
-    """获取 Cloudflare 账户 ID"""
+    """获取 Cloudflare 账户 ID（带缓存，避免单次部署多次调用 CF API）"""
+    cache_key = headers.get("Authorization", "")
+    if cache_key in _ACCOUNT_ID_CACHE:
+        return _ACCOUNT_ID_CACHE[cache_key]
     result = call_cf_api("GET", "/accounts", headers=headers)
     if not result:
         exit_error("无法获取 Cloudflare 账户信息")
-    return str(result[0]["id"])
+    account_id = str(result[0]["id"])
+    _ACCOUNT_ID_CACHE[cache_key] = account_id
+    return account_id
 
 
 def get_worker_subdomain(headers: Dict[str, str]) -> str:
@@ -227,7 +243,8 @@ def get_worker_subdomain(headers: Dict[str, str]) -> str:
         subdomain = result["result"].get("subdomain", "")
         if subdomain:
             return f"{subdomain}.workers.dev"
-    # 尝试通过账户信息获取
+    # 获取失败：返回 "workers.dev" 会让订阅 URL 无效（如 cf-xui-sub.workers.dev 不存在），明确警告
+    print(f"警告：无法获取 workers.dev 子域名，{worker_name} 的订阅 URL 可能无效，请手动在 CF 面板确认子域名")
     return "workers.dev"
 
 
@@ -317,11 +334,10 @@ def create_kv_namespace(headers: Dict[str, str], kv_name: str) -> str:
             f"{CF_API_BASE}/accounts/{account_id}/storage/kv/namespaces",
             headers=headers,
         )
-        if existing:
-            for ns in existing:
-                if ns.get("title") == kv_name:
-                    print(f"  KV namespace '{kv_name}' 已存在 (ID: {ns['id']})")
-                    return str(ns["id"])
+        for ns in (existing.get("result") or []):
+            if ns.get("title") == kv_name:
+                print(f"  KV namespace '{kv_name}' 已存在 (ID: {ns['id']})")
+                return str(ns["id"])
         exit_error("创建 KV namespace 失败")
     ns_id = str(result["result"]["id"])
     print(f"  已创建 KV namespace '{kv_name}' (ID: {ns_id})")
@@ -525,12 +541,14 @@ def apply_origin_rules(zone_id: str, headers: Dict[str, str], routes: List[Dict[
 # 3x-ui 操作
 # ============================================================
 def protocol_settings(protocol: str, user_uuid: str) -> Dict[str, Any]:
+    # client 凭证由 insert_inbounds 写入 clients/client_inbounds 关联表（独立 client 架构）。
+    # settings 不内嵌 client，避免 x-ui 迁移时 email="" 触发 UNIQUE 冲突导致关联表为空 -> config clients=null -> -1。
     if protocol == "vless":
-        return {"clients": [{"id": user_uuid, "flow": ""}], "decryption": "none", "fallbacks": []}
+        return {"clients": [], "decryption": "none", "fallbacks": []}
     if protocol == "trojan":
-        return {"clients": [{"password": user_uuid, "flow": ""}], "fallbacks": []}
+        return {"clients": [], "fallbacks": []}
     if protocol == "vmess":
-        return {"clients": [{"id": user_uuid, "alterId": 0}]}
+        return {"clients": []}
     raise ValueError(f"不支持的协议: {protocol}")
 
 
@@ -646,6 +664,24 @@ def insert_inbounds(db_path: str, user_uuid: str, short_id: str, routes: List[Di
         template = load_template_inbound(conn)
         cursor = conn.cursor()
         inserted_ids: List[int] = []
+        # 独立 client 架构：先建 client 凭证（带唯一 email），再关联各 inbound。
+        # 用 INSERT OR IGNORE 保证幂等（重复部署不会 UNIQUE 冲突）。
+        client_email = short_id
+        cursor.execute(
+            "INSERT OR IGNORE INTO clients "
+            "(email, sub_id, uuid, password, flow, limit_ip, total_gb, expiry_time, enable, group_name, comment, reset, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (client_email, user_uuid, user_uuid, user_uuid, "", 0, 0, 0, 1, "", "cf-xui-helper", 0, 0, 0),
+        )
+        cursor.execute("SELECT id FROM clients WHERE email=?", (client_email,))
+        row = cursor.fetchone()
+        client_id = int(row[0]) if row else 0
+        cursor.execute(
+            "INSERT OR IGNORE INTO client_traffics "
+            "(inbound_id, enable, email, up, down, expiry_time, total, reset, last_online) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (0, 1, client_email, 0, 0, 0, 0, 0, 0),
+        )
         for route in routes:
             protocol = route["protocol"]
             row_data = dict(template)
@@ -658,6 +694,8 @@ def insert_inbounds(db_path: str, user_uuid: str, short_id: str, routes: List[Di
                 "sniffing": json.dumps(sniffing_settings(), separators=(",", ":")),
                 "allocate": json.dumps(allocate_settings(), separators=(",", ":")),
                 "tag": f"{short_id}-{protocol}",
+                "expiry_time": 0,       # 显式清零，避免继承模板的过期时间导致新 inbound 被自动禁用
+                "traffic_reset": "",
             })
             columns: List[str] = []
             values: List[Any] = []
@@ -675,7 +713,13 @@ def insert_inbounds(db_path: str, user_uuid: str, short_id: str, routes: List[Di
             placeholders = ",".join(["?"] * len(columns))
             sql = f"INSERT INTO inbounds ({','.join(columns)}) VALUES ({placeholders})"
             cursor.execute(sql, values)
-            inserted_ids.append(int(cursor.lastrowid))
+            inbound_id = int(cursor.lastrowid)
+            inserted_ids.append(inbound_id)
+            cursor.execute(
+                "INSERT OR IGNORE INTO client_inbounds (client_id, inbound_id, flow_override, created_at) "
+                "VALUES (?,?,?,?)",
+                (client_id, inbound_id, "", 0),
+            )
         conn.commit()
         return inserted_ids
     except sqlite3.Error as e:
@@ -694,10 +738,17 @@ def delete_inbounds(db_path: str, inbound_ids: List[int], tags: List[str]) -> No
         cursor = conn.cursor()
         if inbound_ids:
             placeholders = ",".join(["?"] * len(inbound_ids))
+            cursor.execute(f"DELETE FROM client_inbounds WHERE inbound_id IN ({placeholders})", inbound_ids)
             cursor.execute(f"DELETE FROM inbounds WHERE id IN ({placeholders})", inbound_ids)
-        elif tags:
+        # 用 if 而非 elif：ID 删除后仍按 tag 兜底，避免残留同 tag 的 inbound
+        if tags:
             placeholders = ",".join(["?"] * len(tags))
+            cursor.execute(f"SELECT id FROM inbounds WHERE tag IN ({placeholders})", tags)
+            tag_ids = [r[0] for r in cursor.fetchall()]
             cursor.execute(f"DELETE FROM inbounds WHERE tag IN ({placeholders})", tags)
+            if tag_ids:
+                ph = ",".join(["?"] * len(tag_ids))
+                cursor.execute(f"DELETE FROM client_inbounds WHERE inbound_id IN ({ph})", tag_ids)
         conn.commit()
     except sqlite3.Error as e:
         print(str(e))
@@ -721,6 +772,12 @@ def restart_xui() -> None:
         else:
             print(str(e))
         sys.exit(1)
+    # 健康检查：restart 命令成功不代表服务已起来，配置错误时可能启动失败
+    import time as _time
+    _time.sleep(2)
+    chk = subprocess.run(["systemctl", "is-active", "x-ui"], capture_output=True, text=True)
+    if chk.stdout.strip() != "active":
+        print(f"警告：x-ui restart 后状态为 '{chk.stdout.strip()}'，可能启动失败，请检查 systemctl status x-ui 及 /var/log/x-ui/3xui.log")
 
 
 # ============================================================
