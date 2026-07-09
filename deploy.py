@@ -537,7 +537,8 @@ def protocol_settings(protocol: str, user_uuid: str) -> Dict[str, Any]:
 def ws_stream_settings(path: str) -> Dict[str, Any]:
     return {
         "network": "ws",
-        "streamSettings": {"security": "none", "wsSettings": {"path": path}},
+        "security": "none",
+        "wsSettings": {"path": path},
     }
 
 
