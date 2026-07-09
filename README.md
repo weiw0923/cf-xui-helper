@@ -14,7 +14,7 @@
 
 ## 前置要求
 
-- VPS 已安装 **3x-ui**（x-ui）
+- VPS 已安装 **3x-ui**（x-ui），且需为**独立 client 架构**分支（数据库含 `clients` / `client_inbounds` / `client_traffics` 关联表，如 x-rgtk 或 3x-ui 3.3.0+ 多 client 版）。脚本直接写这些关联表，标准 3x-ui（无关联表）会在插入节点时报 `no such table` 失败。
 - 拥有 **Cloudflare 账号** 和 **Global API Key**
 - 域名已添加到 Cloudflare（DNS 由 Cloudflare 管理）
 
@@ -109,7 +109,7 @@ https://cf-xui-sub.xxx.workers.dev/all
 | target | 客户端 |
 |--------|--------|
 | `base64` | 默认，通用订阅格式 |
-| `clash` | Clash Meta / STASH |
+| `clash` | Clash Meta / STASH（支持 VLESS/Trojan/VMess 三协议） |
 | `surge` | Surge |
 | `quantumult` | Quantumult X |
 
@@ -180,14 +180,15 @@ xn--b6gac.eu.org
          └── Worker 路由 → /{UUID}/sub → 订阅链接
                           → /          → Web 交互页面（可选密码保护）
                           → /vl,/tr,/vm,/all → 短路径订阅
-                          → /api/nodes → KV 节点列表 JSON
+                          → /api/nodes → KV 节点列表 JSON（设置 ACCESS_PASSWORD 时需密码）
 ```
 
 ## 注意事项
 
 - 脚本需要 root 权限（操作 3x-ui 数据库和 systemctl）
 - Cloudflare API Key 建议使用后及时回收权限
-- 卸载时会删除所有由本脚本创建的配置，不影响其他手动配置
+- client 凭证（uuid/password）写入 `clients`/`client_inbounds`/`client_traffics` 关联表（带唯一 email），卸载时同步清理 `client_inbounds`
+- 卸载时会删除所有由本脚本创建的配置（3x-ui 节点、关联表、Worker、KV、DNS、SSL、Origin Rules），不影响其他手动配置
 - 支持多协议混合，每个协议使用独立端口和路径
 - 节点来源统一从 KV 读取（`epd` 参数控制），去掉了优选 IP / GitHub 优选 / IPv4/IPv6 / 运营商筛选
 - 部署状态保存在 `/etc/x-ui/cf_auto_state.json`，再次运行前必须先卸载
