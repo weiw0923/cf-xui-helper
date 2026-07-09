@@ -2,7 +2,6 @@
 // 节点来源：KV 存储 + 原生地址
 
 // 默认配置
-let epd = true;   // 启用自定义KV节点
 let ev = true;    // 启用VLESS协议
 let et = false;   // 启用Trojan协议
 let vm = false;   // 启用VMess协议
@@ -102,7 +101,7 @@ function generateLinksFromSource(list, user, workerDomain, disableNonTLS = false
                     path: wsPath
                 });
                 if (echConfig) {
-                    wsParams.set('alpn', 'h3,h2,http/1.1');
+                    wsParams.set('alpn', 'h2,http/1.1');
                     wsParams.set('ech', echConfig);
                 }
                 links.push(`${proto}://${user}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
@@ -169,7 +168,7 @@ async function generateTrojanLinksFromSource(list, user, workerDomain, disableNo
                     path: wsPath
                 });
                 if (echConfig) {
-                    wsParams.set('alpn', 'h3,h2,http/1.1');
+                    wsParams.set('alpn', 'h2,http/1.1');
                     wsParams.set('ech', echConfig);
                 }
                 links.push(`trojan://${password}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
@@ -189,7 +188,7 @@ async function generateTrojanLinksFromSource(list, user, workerDomain, disableNo
 }
 
 // 生成VMess链接
-function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/') {
+function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/', echConfig = null) {
     const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
     const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
     const defaultHttpsPorts = [443];
@@ -240,6 +239,10 @@ function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = 
             if (tls) {
                 vmessConfig.sni = workerDomain;
                 vmessConfig.fp = "chrome";
+                if (echConfig) {
+                    vmessConfig.alpn = "h2,http/1.1";
+                    vmessConfig.ech = echConfig;
+                }
             }
 
             const jsonStr = JSON.stringify(vmessConfig);
@@ -255,7 +258,7 @@ function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = 
 }
 
 // 生成订阅内容
-async function handleSubscriptionRequest(request, user, customDomain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, echConfig, env) {
+async function handleSubscriptionRequest(request, user, customDomain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, echConfig, epdEnabled, env) {
     const url = new URL(request.url);
     const finalLinks = [];
     const workerDomain = url.hostname;
@@ -274,7 +277,7 @@ async function handleSubscriptionRequest(request, user, customDomain, evEnabled,
             finalLinks.push(...await generateTrojanLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath, echConfig));
         }
         if (vmEnabled) {
-            finalLinks.push(...generateVMessLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
+            finalLinks.push(...generateVMessLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath, echConfig));
         }
     }
 
@@ -283,7 +286,7 @@ async function handleSubscriptionRequest(request, user, customDomain, evEnabled,
     await addNodesFromList(nativeList);
 
     // 自定义KV节点
-    if (epd) {
+    if (epdEnabled) {
         const nodeList = await getCustomNodes(env);
         await addNodesFromList(nodeList);
     }
@@ -338,19 +341,63 @@ function generateClashConfig(links) {
     links.forEach((link, index) => {
         const name = decodeURIComponent(link.split('#')[1] || `节点${index + 1}`);
         proxyNames.push(name);
-        const server = link.match(/@([^:]+):(\d+)/)?.[1] || '';
-        const port = link.match(/@[^:]+:(\d+)/)?.[1] || '443';
-        const uuid = link.match(/vless:\/\/([^@]+)@/)?.[1] || '';
-        const tls = link.includes('security=tls');
-        const path = link.match(/path=([^&#]+)/)?.[1] || '/';
-        const host = link.match(/host=([^&#]+)/)?.[1] || '';
-        const sni = link.match(/sni=([^&#]+)/)?.[1] || '';
+
+        let type, server, port, tls, path, host, sni;
+        let uuid = '', password = '', alterId = '0', cipher = 'auto';
+
+        if (link.startsWith('vless://')) {
+            type = 'vless';
+            server = link.match(/@([^:]+):(\d+)/)?.[1] || '';
+            port = link.match(/@[^:]+:(\d+)/)?.[1] || '443';
+            uuid = link.match(/vless:\/\/([^@]+)@/)?.[1] || '';
+            tls = link.includes('security=tls');
+            path = decodeURIComponent(link.match(/path=([^&#]+)/)?.[1] || '/');
+            host = link.match(/host=([^&#]+)/)?.[1] || '';
+            sni = link.match(/sni=([^&#]+)/)?.[1] || '';
+        } else if (link.startsWith('trojan://')) {
+            type = 'trojan';
+            server = link.match(/@([^:]+):(\d+)/)?.[1] || '';
+            port = link.match(/@[^:]+:(\d+)/)?.[1] || '443';
+            password = link.match(/trojan:\/\/([^@]+)@/)?.[1] || '';
+            tls = link.includes('security=tls');
+            path = decodeURIComponent(link.match(/path=([^&#]+)/)?.[1] || '/');
+            host = link.match(/host=([^&#]+)/)?.[1] || '';
+            sni = link.match(/sni=([^&#]+)/)?.[1] || '';
+        } else if (link.startsWith('vmess://')) {
+            type = 'vmess';
+            const b64 = link.slice('vmess://'.length);
+            let json = {};
+            try {
+                const decoded = decodeURIComponent(atob(b64).split('').map(c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''));
+                json = JSON.parse(decoded);
+            } catch (e) {}
+            server = json.add || '';
+            port = json.port ? String(json.port) : '443';
+            uuid = json.id || '';
+            alterId = json.aid != null ? String(json.aid) : '0';
+            cipher = json.scy || 'auto';
+            tls = json.tls === 'tls';
+            path = decodeURIComponent(json.path || '/');
+            host = json.host || '';
+            sni = json.sni || '';
+        } else {
+            return; // 未知协议跳过
+        }
 
         yaml += `  - name: ${name}\n`;
-        yaml += `    type: vless\n`;
+        yaml += `    type: ${type}\n`;
         yaml += `    server: ${server}\n`;
         yaml += `    port: ${port}\n`;
-        yaml += `    uuid: ${uuid}\n`;
+        if (type === 'vless' || type === 'vmess') {
+            yaml += `    uuid: ${uuid}\n`;
+        }
+        if (type === 'trojan') {
+            yaml += `    password: ${password}\n`;
+        }
+        if (type === 'vmess') {
+            yaml += `    alterId: ${alterId}\n`;
+            yaml += `    cipher: ${cipher}\n`;
+        }
         yaml += `    tls: ${tls}\n`;
         yaml += `    network: ws\n`;
         yaml += `    ws-opts:\n`;
@@ -380,7 +427,13 @@ function generateSurgeConfig(links) {
     let config = '[Proxy]\n';
     links.forEach(link => {
         const name = decodeURIComponent(link.split('#')[1] || '节点');
-        config += `${name} = vless, ${link.match(/@([^:]+):(\d+)/)?.[1] || ''}, ${link.match(/@[^:]+:(\d+)/)?.[1] || '443'}, username=${link.match(/vless:\/\/([^@]+)@/)?.[1] || ''}, tls=${link.includes('security=tls')}, ws=true, ws-path=${link.match(/path=([^&#]+)/)?.[1] || '/'}, ws-headers=Host:${link.match(/host=([^&#]+)/)?.[1] || ''}\n`;
+        const server = link.match(/@([^:]+):(\d+)/)?.[1] || '';
+        const port = link.match(/@[^:]+:(\d+)/)?.[1] || '443';
+        const username = link.match(/vless:\/\/([^@]+)@/)?.[1] || '';
+        const tls = link.includes('security=tls');
+        const path = decodeURIComponent(link.match(/path=([^&#]+)/)?.[1] || '/');
+        const host = link.match(/host=([^&#]+)/)?.[1] || '';
+        config += `${name} = vless, ${server}, ${port}, username=${username}, tls=${tls}, ws=true, ws-path=${path}, ws-headers=Host:${host}\n`;
     });
     config += '\n[Proxy Group]\nPROXY = select, ' + links.map((_, i) => decodeURIComponent(links[i].split('#')[1] || `节点${i + 1}`)).join(', ') + '\n';
     return config;
@@ -391,6 +444,10 @@ function generateHomePage(scuValue, env) {
     const scu = scuValue || 'https://url.v1.mk/sub';
     const subUuid = env?.SUB_UUID || "";
     const subDomain = env?.SUB_DOMAIN || "";
+    // 部署信息卡片（避免模板引用未定义变量导致 ReferenceError）
+    const infoCards = subDomain
+        ? `<div class="card"><div class="info-row"><div class="info-label">域名</div><div class="info-value code">${subDomain}</div></div><div class="info-row"><div class="info-label">UUID</div><div class="info-value code">${subUuid}</div></div></div>`
+        : '';
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -475,6 +532,9 @@ function generateHomePage(scuValue, env) {
         }
         .client-btn:active { transform: scale(0.97); }
         .result-url {
+            font-family: monospace; font-size: 12px; word-break: break-all;
+            padding: 8px; background: #f5f5f5; border-radius: 4px;
+        }
         @media (max-width: 480px) {
             .header h1 { font-size: 34px; }
             .client-btn { font-size: 12px; padding: 10px 12px; }
@@ -746,16 +806,25 @@ function generateHomePage(scuValue, env) {
 
             const baseUrl = new URL(window.location.href).origin;
             const shortId = uuid.substring(0, 8);
-            // 根据第一个开启的协议确定 path
-            let activePath = '/' + shortId + '-vl';
-            if (!switches.switchVL && switches.switchTJ) activePath = '/' + shortId + '-tr';
-            else if (!switches.switchVL && !switches.switchTJ && switches.switchVM) activePath = '/' + shortId + '-vm';
-            let subUrl = baseUrl + '/' + uuid + '/sub?domain=' + encodeURIComponent(domain)
-                + '&epd=' + (switches.switchNodes ? 'yes' : 'no')
-                + '&path=' + encodeURIComponent(activePath);
-            if (switches.switchVL) subUrl += '&ev=yes';
-            if (switches.switchTJ) subUrl += '&et=yes';
-            if (switches.switchVM) subUrl += '&evm=yes';
+            // 统计同时开启的协议数量
+            const enabledProtos = [switches.switchVL, switches.switchTJ, switches.switchVM].filter(Boolean).length;
+
+            let subUrl;
+            if (enabledProtos > 1) {
+                // 多协议同时开启：走 /all 短路由，内部为每个协议分别生成正确 path，避免非首选协议节点 WS 404
+                subUrl = baseUrl + '/all';
+            } else {
+                // 单协议：使用该协议对应的 path
+                let activePath = '/' + shortId + '-vl';
+                if (!switches.switchVL && switches.switchTJ) activePath = '/' + shortId + '-tr';
+                else if (!switches.switchVL && !switches.switchTJ && switches.switchVM) activePath = '/' + shortId + '-vm';
+                subUrl = baseUrl + '/' + uuid + '/sub?domain=' + encodeURIComponent(domain)
+                    + '&epd=' + (switches.switchNodes ? 'yes' : 'no')
+                    + '&path=' + encodeURIComponent(activePath);
+                if (switches.switchVL) subUrl += '&ev=yes';
+                if (switches.switchTJ) subUrl += '&et=yes';
+                if (switches.switchVM) subUrl += '&evm=yes';
+            }
             if (switches.switchTLS) subUrl += '&dkby=yes';
             if (switches.switchECH) {
                 subUrl += '&ech=yes';
@@ -873,7 +942,7 @@ function generateAuthPage(error = false) {
         function verify() {
             const pwd = document.getElementById('password').value;
             if (!pwd) return;
-            document.cookie = 'auth_token=' + encodeURIComponent(pwd) + '; path=/; max-age=86400';
+            document.cookie = 'auth_token=' + encodeURIComponent(pwd) + '; path=/; max-age=86400; Secure; SameSite=Lax';
             window.location.reload();
         }
     </script>
@@ -923,6 +992,8 @@ export default {
 
         // API: 获取 KV 节点列表
         if (path === '/api/nodes') {
+            const authResp = verifyAuth(request, env);
+            if (authResp) return authResp;
             const nodeList = await getCustomNodes(env);
             return new Response(JSON.stringify({ nodes: nodeList }), {
                 headers: { 'Content-Type': 'application/json; charset=utf-8' }
@@ -935,7 +1006,7 @@ export default {
             '/vl':  { ev: 'yes', et: 'no',  evm: 'no',  suffix: '-vl' },
             '/tr':  { ev: 'no',  et: 'yes', evm: 'no',  suffix: '-tr' },
             '/vm':  { ev: 'no',  et: 'no',  evm: 'yes', suffix: '-vm' },
-            '/all': { ev: 'yes', et: 'yes', evm: 'yes', suffix: '-vl' },
+            '/all': { ev: 'yes', et: 'yes', evm: 'yes' }, // /all 走独立分支，内部自定 suffix，此处无需 suffix
         };
         const shortRoute = shortRoutes[path];
         if (shortRoute) {
@@ -969,20 +1040,23 @@ export default {
                         new Request(fwd, request),
                         uuid, domain,
                         c.ev === 'yes', c.et === 'yes', c.evm === 'yes',
-                        true, subPath, null, env
+                        true, subPath, null, true, env
                     );
                     parts.push(await resp.text());
                 }
                 const target = url.searchParams.get('target') || 'base64';
                 if (target === 'base64' || target === 'quanx' || target === 'quantumult') {
+                    // 仅 base64/quanx target 各部分才是 base64 编码，可安全 atob 合并
                     const decoded = parts.map(function(p) { return atob(p); }).join(String.fromCharCode(10));
                     return new Response(btoa(decoded), {
                         headers: { 'Content-Type': 'text/plain; charset=utf-8' }
                     });
                 }
-                const decodedLines = parts.map(function(p) { return atob(p); }).join(String.fromCharCode(10));
-                return new Response(decodedLines, {
-                    headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+                // clash/surge 等 target 各部分是 YAML 纯文本，直接拼接（允许重复 YAML 头，避免 atob 崩溃）
+                const merged = parts.join(String.fromCharCode(10));
+                const ct = (target === 'clash' || target === 'clashr') ? 'text/yaml; charset=utf-8' : 'text/plain; charset=utf-8';
+                return new Response(merged, {
+                    headers: { 'Content-Type': ct }
                 });
             }
             const extraParams = new URLSearchParams();
@@ -1001,7 +1075,7 @@ export default {
                 new Request(forwarded, request),
                 uuid, domain,
                 shortRoute.ev === 'yes', shortRoute.et === 'yes', shortRoute.evm === 'yes',
-                true, subPath, null, env
+                true, subPath, null, true, env
             );
         }
 
@@ -1014,7 +1088,7 @@ export default {
                 return new Response('缺少域名参数', { status: 400 });
             }
 
-            epd = url.searchParams.get('epd') !== 'no';
+            const epdEnabled = url.searchParams.get('epd') !== 'no';
             const evEnabled = url.searchParams.get('ev') === 'yes' || (url.searchParams.get('ev') === null && ev);
             const etEnabled = url.searchParams.get('et') === 'yes';
             const vmEnabled = url.searchParams.get('evm') === 'yes';
@@ -1026,7 +1100,7 @@ export default {
             const echConfig = echEnabled ? `${customECHDomainParam}+${customDNSParam}` : null;
             const customPath = url.searchParams.get('path') || '/';
 
-            return await handleSubscriptionRequest(request, uuid, domain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, echConfig, env);
+            return await handleSubscriptionRequest(request, uuid, domain, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath, echConfig, epdEnabled, env);
         }
 
         return new Response('Not Found', { status: 404 });
